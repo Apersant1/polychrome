@@ -80,11 +80,18 @@ const clamp = (v: number) => Math.min(Math.max(v, 0), 1);
 /** Что показывать: режим, палитра с флагами, ступени скорости и направления */
 export type Shown = { mode: number; palette: number[]; speed?: number; direction?: number };
 
+// Ширина и число рядов раскладки: считаем один раз на набор клавиш, а не на каждую клавишу в каждом кадре
+const sizes = new WeakMap<Key[], [cols: number, rows: number]>();
+function sizeOf(keys: Key[]) {
+  let size = sizes.get(keys);
+  if (!size) sizes.set(keys, (size = [Math.max(...keys.map(([x, , w]) => x + w)), Math.max(...keys.map(([, y]) => y)) + 1]));
+  return size;
+}
+
 /** Цвет клавиши i в момент t (секунды) */
 export function keyColor(keys: Key[], i: number, s: Shown, t: number): RGB {
   t *= (SPEEDS[s.speed ?? 3] ?? 100) / 100;
-  const cols = Math.max(...keys.map(([x, , w]) => x + w));
-  const nrows = Math.max(...keys.map(([, y]) => y)) + 1;
+  const [cols, nrows] = sizeOf(keys);
   const [kx, y, w] = keys[i];
   const x = kx + w / 2; // по центру клавиши
   const p0 = s.palette[0] ?? 0;

@@ -9,7 +9,8 @@
 
   // Сцена 800×560, растягивается по месту с сохранением пропорций
   const W = 800, H = 560;
-  type Part = { label: string; box: [x: number, y: number, w: number, h: number]; zone: PartZone; strips?: [number, number, number, number][] };
+  type Box = [x: number, y: number, w: number, h: number];
+  type Part = { label: string; box?: Box; zone: PartZone; strips?: [number, number, number, number][] }; // у групп вентиляторов рамку строит boxOf
   // Детали картинки: где лежат (для наведения и клика) и какой зоной светятся по умолчанию — как на B760M Pro RS/D4.
   // Пользователь перепривязывает их в режиме «Настроить» (app.scene); у лент — отрезки [x0, y0, x1, y1].
   const PARTS: Record<string, Part> = {
@@ -19,8 +20,8 @@
     right: { label: 'Лента справа', box: [749, 64, 18, 412], zone: 4, strips: [[758, 70, 758, 470]] },
     io: { label: 'Кожух I/O', box: [174, 104, 70, 100], zone: 5, strips: [[182, 112, 182, 196], [182, 112, 236, 112]] },
     corner: { label: 'Уголок платы', box: [482, 98, 100, 80], zone: 6, strips: [[490, 106, 574, 106], [574, 106, 574, 170]] },
-    topFans: { label: 'Верхние вентиляторы', box: [172, 36, 446, 34], zone: FANS_ZONE }, // рамки групп — по fanSpots
-    frontFans: { label: 'Передние вентиляторы', box: [614, 84, 132, 412], zone: FANS_ZONE },
+    topFans: { label: 'Верхние вентиляторы', zone: FANS_ZONE },
+    frontFans: { label: 'Передние вентиляторы', zone: FANS_ZONE },
     rearFan: { label: 'Задний вентилятор', box: [57, 102, 96, 96], zone: FANS_ZONE },
     cpu: { label: 'Кулер процессора', box: [268, 148, 104, 104], zone: null },
   };
@@ -32,8 +33,8 @@
     const { center, step } = GROUPS[name];
     return Array.from({ length: n }, (_, i) => center + (i - (n - 1) / 2) * step);
   };
-  function boxOf(name: string): Part['box'] {
-    if (!(name in GROUPS)) return PARTS[name].box;
+  function boxOf(name: string): Box {
+    if (!(name in GROUPS)) return PARTS[name].box!;
     const spots = fanSpots(name);
     return name === 'topFans' ? [spots[0] - 72, 36, spots.at(-1)! - spots[0] + 144, 34] : [614, spots[0] - 64, 132, spots.at(-1)! - spots[0] + 128];
   }
@@ -218,7 +219,7 @@
     const y = ((e.clientY - r.top) * view.dpr - view.oy) / view.k;
     const name = Object.keys(PARTS).find((name) => {
       const [bx, by, bw, bh] = boxOf(name);
-      return x >= bx - 5 && x <= bx + bw + 5 && y >= by - 5 && y <= by + bh + 5 && (editing || typeof partZone(name) === 'number');
+      return x >= bx - 5 && x <= bx + bw + 5 && y >= by - 5 && y <= by + bh + 5 && (editing || !!partLook(name)); // зона должна быть у контроллера, а не только номером в настройке
     });
     return name ?? null;
   }

@@ -5,7 +5,7 @@ import { actual, css, hsv, usesColor, usesPalette, MODE_OFF } from '$lib/leds';
 import { app, type Profile } from './app.svelte';
 import { apply, look, same, setLooks } from './board.svelte';
 import { storeConfig } from './config.svelte';
-import { kbdSet } from './keyboard.svelte';
+import { kbdSet, setKbdFollow } from './keyboard.svelte';
 
 export const profileLook = (p: Profile, id: number) => p.zones[id] ?? p.zones['*'];
 
@@ -29,7 +29,10 @@ export function useProfile(name: string) {
   if (!p) return;
   app.profile = name;
   setLooks((zone) => profileLook(p, zone.id));
-  if (p.kbd) kbdSet(p.kbd);
+  if (p.kbd) {
+    if (app.kbdFollow) setKbdFollow(false); // своя клавиатура профиля — уже не «Как у платы»
+    kbdSet(p.kbd);
+  }
   return apply();
 }
 

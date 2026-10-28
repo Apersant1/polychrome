@@ -45,15 +45,11 @@
   </div>
 {/snippet}
 
-{#snippet tip(id: string, text: string)}
-  <button type="button" class="tip" aria-label="Подсказка" aria-describedby={id}><Info size={14} /></button>
-  <span {id} role="tooltip">{text}</span>
-{/snippet}
-
 <div class="panel kbd">
   <h3>
     Клавиатура<span>· ZET Blade Pro</span>
-    {@render tip('kbd-tip', 'Настройки хранит сама клавиатура. Blade Pro Software не нужна, а если запущена — занимает клавиатуру.')}
+    <button type="button" class="tip" aria-label="Подсказка" aria-describedby="kbd-tip"><Info size={14} /></button>
+    <span id="kbd-tip" role="tooltip">Настройки хранит сама клавиатура. Blade Pro Software не нужна, а если запущена — занимает клавиатуру.</span>
   </h3>
 
   {#if app.kbdFollow}
