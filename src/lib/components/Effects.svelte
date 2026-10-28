@@ -4,10 +4,11 @@
   import { app } from '$lib/state/app.svelte';
   import { change } from '$lib/state/board.svelte';
   import { toggleLive } from '$lib/state/live.svelte';
-  import { kbdSetMode, KBD_NAMES, KBD_HINTS } from '$lib/state/keyboard.svelte';
+  import { kbdSetMode, setKbdFollow, KBD_NAMES, KBD_HINTS } from '$lib/state/keyboard.svelte';
   import EffectStrip from './EffectStrip.svelte';
   import KbdStrip from './KbdStrip.svelte';
-  import { MODES, HINTS, type RGB } from '$lib/leds';
+  import { demoPalette, withRgb, type Shown } from '$lib/kbd';
+  import { MODES, HINTS, actual, type RGB } from '$lib/leds';
 
   /** all — показать все группы сразу (страница «Эффекты») */
   let { all = false }: { all?: boolean } = $props();
@@ -15,6 +16,7 @@
   // Живые эффекты (live.rs) — не режим зоны, а кадры поверх всех зон
   const MUSIC = -1;
   const SCREEN = -2;
+  const FOLLOW = -3; // клавиатура статичным цветом повторяет правки зон
   const LIVE: Record<number, Live> = { [MUSIC]: 'music', [SCREEN]: 'screen' };
   const TABS: [string, number[]][] = [
     ['Популярные', [1, 2, 14, 7, 3, MUSIC, SCREEN]],
@@ -22,7 +24,7 @@
     ['Пользовательские', [16, 17]],
   ];
   const KBD_TABS: [string, number[]][] = [
-    ['Популярные', [1, 2, 3, 11, 7, MUSIC, SCREEN]],
+    ['Популярные', [FOLLOW, 1, 2, 3, 11, 7, MUSIC, SCREEN]],
     ['Дополнительные', [4, 5, 6, 8, 9, 10, 12]],
     ['Пользовательские', [13]],
   ];
@@ -32,18 +34,17 @@
   // Выбрана клавиатура — карточки её режимов (на странице «Эффекты» всегда плата)
   const kbd = $derived(!all && app.selected === 'kbd' ? app.kbd : null);
   const tabs = $derived(kbd ? KBD_TABS.map(([t, modes]) => [t, modes.filter((m) => m < 0 || kbd.modes.some((k) => k.index === m))] as [string, number[]]) : TABS);
-  // Цвет клавиатуры для превью; null — включена радуга (флаг 0x1000000 в цвете)
-  const kbdColor = $derived.by((): RGB | null => {
-    const c = kbd?.effect.palette[0] ?? 0xffffff;
-    return c & 0x1000000 ? null : [(c >> 16) & 255, (c >> 8) & 255, c & 255];
-  });
+  // Выбранный режим показываем с его настройками, остальные — с примерной палитрой
+  const kbdShown = (mode: number): Shown => (kbd && !app.kbdFollow && kbd.effect.mode === mode ? kbd.effect : { mode, palette: demoPalette(mode) });
 
   const preview = (mode: number) => ({ ...app.edit, mode, palette: app.edit.palette.length ? app.edit.palette : DEFAULT_PALETTE });
   const DEFAULT_PALETTE: RGB[] = [[255, 0, 80], [140, 40, 255], [0, 140, 255]];
 
-  const isOn = (mode: number) => (mode < 0 ? app.live === LIVE[mode] : kbd ? kbd.effect.mode === mode : app.edit.mode === mode);
+  const isOn = (mode: number) =>
+    mode === FOLLOW ? app.kbdFollow : mode < 0 ? app.live === LIVE[mode] : kbd ? !app.kbdFollow && kbd.effect.mode === mode : app.edit.mode === mode;
 
   function choose(mode: number) {
+    if (mode === FOLLOW) return setKbdFollow(!app.kbdFollow);
     if (mode < 0) return toggleLive(LIVE[mode]);
     if (kbd) return kbdSetMode(mode);
     change({ mode, palette: app.edit.palette.length >= 2 ? app.edit.palette : DEFAULT_PALETTE });
@@ -58,11 +59,14 @@
         {#if mode === MUSIC}
           <div class="bars">{#each [3, 6, 4, 8, 5, 9, 4, 7, 3, 6, 8, 4] as b, i (i)}<i style:height="{b * 4}px"></i>{/each}</div>
           <b>Музыка</b><small>Все зоны пульсируют под звук своим цветом</small>
+        {:else if mode === FOLLOW}
+          <KbdStrip shown={{ mode: 1, palette: [withRgb(0, actual(app.edit).rgb)] }} />
+          <b>Как у платы</b><small>Статичный цвет из правок зон</small>
         {:else if mode === SCREEN}
           <div class="bars screen"></div>
           <b>Экран</b><small>Средний цвет монитора на всех зонах</small>
         {:else}
-          {#if kbd}<KbdStrip {mode} color={kbdColor} />{:else}<EffectStrip look={preview(mode)} wave={WAVY.includes(mode) ? 1 : 0} />{/if}
+          {#if kbd}<KbdStrip shown={kbdShown(mode)} />{:else}<EffectStrip look={preview(mode)} wave={WAVY.includes(mode) ? 1 : 0} />{/if}
           <b>{kbd ? KBD_NAMES[mode] : MODES[mode]}</b><small>{kbd ? KBD_HINTS[mode] : HINTS[mode]}</small>
         {/if}
       </button>

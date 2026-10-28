@@ -40,10 +40,13 @@ export async function loadConfig() {
   }
 }
 
+// Сохранения по очереди: параллельные пишут в один config.json.tmp и мешают друг другу, а старое могло лечь поверх нового
+let saving: Promise<unknown> = Promise.resolve();
+
 export function storeConfig() {
   if (!persist) return;
-  const config: Config = { profiles: app.profiles, names: app.names, kbdFollow: app.kbdFollow, kbdMode: app.kbdMode };
-  api.saveConfig($state.snapshot(config)).catch((e) => alert(e));
+  const config: Config = $state.snapshot({ profiles: app.profiles, names: app.names, kbdFollow: app.kbdFollow, kbdMode: app.kbdMode });
+  saving = saving.then(() => api.saveConfig(config)).catch((e) => alert(e));
 }
 
 /** Пустое имя — вернуть стандартное */

@@ -47,6 +47,7 @@ export async function kbdSet(effect: KbdEffect) {
 
 /** Сменить режим: ползунки и цвета берём те, что клавиатура помнит для этого режима */
 export async function kbdSetMode(mode: number) {
+  if (app.kbdFollow) setKbdFollow(false);
   try {
     await kbdSet(await api.kbdEffect(mode));
   } catch {

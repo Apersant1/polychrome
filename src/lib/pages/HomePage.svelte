@@ -6,16 +6,18 @@
   import Effects from '$lib/components/Effects.svelte';
   import ApplyPanel from '$lib/components/ApplyPanel.svelte';
   import KbdPanel from '$lib/components/KbdPanel.svelte';
+  import KbdPreview from '$lib/components/KbdPreview.svelte';
   import Profiles from '$lib/components/Profiles.svelte';
 </script>
 
 <div class="home">
   <div class="tree"><DeviceTree /></div>
-  <div class="view"><Preview /></div>
   {#if app.selected === 'kbd' && app.kbd}
+    <div class="view"><KbdPreview /></div>
     <div class="kbdpanel"><KbdPanel /></div>
     <div class="fx"><Effects /></div>
   {:else}
+    <div class="view"><Preview /></div>
     <div class="color"><ColorPanel /></div>
     <div class="fx"><Effects /></div>
     <div class="targets"><ApplyPanel /></div>
