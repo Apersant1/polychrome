@@ -27,8 +27,6 @@ tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_System_RemoteDesktop", "Win32_System_Power", "Win32_System_SystemServices", "Win32_System_LibraryLoader"] }
 cpal = "0.18.2"
-aes = "0.8"
-base64 = "0.22"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

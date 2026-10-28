@@ -1,7 +1,7 @@
 <script lang="ts">
   import { app, kbdSet, kbdSetMode, setKbdFollow } from './app.svelte';
 
-  // Номера режимов службы ZET → KB_MODE_* из прошивки Whiftec (kb_def.py)
+  // Номера режимов клавиатуры → KB_MODE_* из прошивки Whiftec (kb_def.py)
   const NAMES = ['', 'Статичный', 'Дыхание', 'Поток', 'Дождь', 'Бегущий огонь', 'Звёзды', 'Реакция на нажатие', 'Капли', 'Крест', 'Рябь', 'Аврора', 'Тепловая карта', 'Своя раскраска'];
   const DIRS = ['Вправо', 'Влево', 'Вниз', 'Вверх'];
   const HUE = 0x1000000; // флаг цвета: прошивка сама перебирает оттенки
@@ -67,13 +67,13 @@
     </label>
   {/if}
 
-  {#if e.mode === CUSTOM}<p class="note">Цвета отдельных клавиш задаются в программе Blade Pro Software.</p>{/if}
+  {#if e.mode === CUSTOM}<p class="note">Цвета отдельных клавиш остаются те, что записаны в клавиатуре.</p>{/if}
 
   <label class="follow">
     <span>Цвет как у платы<small>правки зон красят клавиатуру статичным цветом</small></span>
     <input type="checkbox" role="switch" class="switch" checked={app.kbdFollow} onchange={(ev) => setKbdFollow(ev.currentTarget.checked)} />
   </label>
-  <p class="note">Настройки хранит сама клавиатура. Работает, пока установлена Blade Pro Software.</p>
+  <p class="note">Настройки хранит сама клавиатура. Программа Blade Pro Software не нужна, а если запущена — занимает клавиатуру.</p>
 </div>
 
 <style>

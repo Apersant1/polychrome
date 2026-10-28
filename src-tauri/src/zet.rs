@@ -1,33 +1,26 @@
-//! Клавиатура ZET Blade Pro (0416:A0F8) через службу wkb-service из Blade Pro Software.
-//! HID держит сама служба (от SYSTEM); говорим с ней так же, как wkbapp.exe 1.2.4.2 (снято перехватом):
-//! TCP 127.0.0.1:57887, заголовок 32 байта + JSON, всё AES-256-ECB.
+//! Клавиатура ZET Blade Pro (0416:A0F8, прошивка Whiftec KB100) напрямую по USB, без Blade Pro Software.
+//! 32-байтные отчёты ID 6 в коллекцию COL06 — как их шлёт wkbsvc.exe 1.2.4.2 (снято Ghidra):
+//! `06 BE <команда> …`, клавиатура отвечает тем же пакетом с 7D вместо BE.
 
-use aes::Aes256;
-use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit, generic_array::GenericArray};
-use base64::{Engine, engine::general_purpose::STANDARD as B64};
+use hidapi::{HidApi, HidDevice, HidResult};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
-use std::{
-    io::{self, Read, Write},
-    net::TcpStream,
-    time::Duration,
-};
 
-const ADDR: &str = "127.0.0.1:57887";
-const MAGIC: [u8; 4] = [0xaf, 0x3e, 0x5d, 0xa2];
-/// Шифрует сообщения до рукопожатия
-const K_LINK: &str = "d00aa0c9ddec921e260dd6c2432c40ca5f53a7e7bae37d25221cf9dc9dc67bb4";
-/// Шифрует вызов службы и выданный ею сеансовый ключ
-const K_AUTH: &str = "931379953e9c8e25c030faab5d11dfdd83b4cd214f825f46338c9a5b7999a2ff";
-
-const HELLO: u16 = 0x0b;
-const GET_EFFECT: u16 = 0x16;
-const SET_EFFECT: u16 = 0x17;
-const LIST_DEVICES: u16 = 0x1f;
+const VID: u16 = 0x0416;
+const PID: u16 = 0xA0F8;
+const REPORT: u8 = 0x06;
+const REQ: u8 = 0xBE;
+const ACK: u8 = 0x7D;
+const GET_EFFECT: u8 = 0x14;
+const SET_EFFECT: u8 = 0x15;
+const KEYBOARD: u8 = 1; // устройство 2 — видимо, боковая подсветка
+const PROFILE: u8 = 1;
 
 pub const MODE_STATIC: u8 = 1;
 
-/// Эффект клавиатуры как у службы: режим 1 статичный … 13 своя раскраска;
+/// mode_id режимов 1…13, как их отдаёт служба ZET (команда 0x1f); одна таблица на модель
+const MODE_IDS: [u32; 13] = [0x17701, 0x27702, 0x37742, 0x47702, 0x57722, 0x67702, 0x80077702, 0x80087702, 0x80097702, 0x800a7702, 0x800b7702, 0xd0702, 0xe0801];
+
+/// Эффект клавиатуры: режим 1 статичный … 13 своя раскраска;
 /// цвет 0xRRGGBB, в старшем байте флаги (бит 24 — радуга, бит 26 — случайный)
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct Effect {
@@ -49,79 +42,72 @@ pub struct ModeInfo {
 }
 
 pub struct Zet {
-    sock: TcpStream,
-    aes: Aes256,
+    _api: HidApi,
+    dev: HidDevice,
 }
 
 impl Zet {
-    pub fn connect() -> io::Result<Self> {
-        let sock = TcpStream::connect_timeout(&ADDR.parse().unwrap(), Duration::from_millis(300))?;
-        sock.set_read_timeout(Some(Duration::from_secs(2)))?;
-        let mut z = Self { sock, aes: cipher(K_LINK.as_bytes()) };
-        let r = z.call(HELLO, &json!({}))?;
-        let auth = cipher(K_AUTH.as_bytes());
-        let answer = ecb(&auth, b64(&r["data"])?, true);
-        let r = z.call(HELLO, &json!({ "data": B64.encode(answer) }))?;
-        z.aes = Aes256::new(GenericArray::from_slice(&ecb(&auth, b64(&r["key"])?, false)));
-        Ok(z)
+    pub fn connect() -> HidResult<Self> {
+        let api = HidApi::new()?;
+        // COL06: usage page 1, usage 0 на интерфейсе 1 — единственная такая коллекция у клавиатуры
+        let info = api
+            .device_list()
+            .find(|d| d.vendor_id() == VID && d.product_id() == PID && d.interface_number() == 1 && d.usage_page() == 1 && d.usage() == 0)
+            .ok_or_else(|| hidapi::HidError::HidApiError { message: "клавиатура ZET не подключена".into() })?;
+        let dev = info.open_device(&api)?;
+        Ok(Self { _api: api, dev })
     }
 
-    fn call(&mut self, cmd: u16, body: &Value) -> io::Result<Value> {
-        self.sock.write_all(&ecb(&self.aes, frame(cmd, body), true))?;
-        let head = self.read(32)?;
-        let head = ecb(&self.aes, head, false);
-        if head[..4] != MAGIC {
-            return Err(io::Error::other("служба ZET ответила не по протоколу"));
-        }
-        let n = u32::from_le_bytes(head[12..16].try_into().unwrap()) as usize;
-        if n == 0 {
-            return Ok(Value::Null);
-        }
-        let body = self.read(n.next_multiple_of(16))?;
-        let body = ecb(&self.aes, body, false);
-        serde_json::from_slice(&body[..n]).map_err(io::Error::other)
-    }
-
-    fn read(&mut self, n: usize) -> io::Result<Vec<u8>> {
-        let mut buf = vec![0; n];
-        self.sock.read_exact(&mut buf)?;
-        Ok(buf)
-    }
-
-    pub fn modes(&mut self) -> io::Result<Vec<ModeInfo>> {
-        let r = self.call(LIST_DEVICES, &json!({ "device_id": 255 }))?;
-        let kb = r["devices"].as_array().and_then(|d| d.iter().find(|d| d["device_id"] == 1)).ok_or_else(|| io::Error::other("служба ZET не видит клавиатуру"))?;
-        Ok(kb["modes"].as_array().into_iter().flatten().map(|m| mode_info(m["mode_index"].as_u64().unwrap_or(0) as u8, m["mode_id"].as_u64().unwrap_or(0) as u32)).collect())
+    pub fn modes(&mut self) -> HidResult<Vec<ModeInfo>> {
+        Ok(MODE_IDS.iter().zip(1..).map(|(&id, index)| mode_info(index, id)).collect())
     }
 
     /// Настройки, сохранённые в клавиатуре для режима (не обязательно включённого)
-    pub fn effect(&mut self, mode: u8) -> io::Result<Effect> {
-        serde_json::from_value(self.call(GET_EFFECT, &json!({ "mode": mode, "device_id": 1 }))?).map_err(io::Error::other)
+    pub fn effect(&mut self, mode: u8) -> HidResult<Effect> {
+        let mut p = [0u8; 32];
+        p[..3].copy_from_slice(&[REPORT, REQ, GET_EFFECT]);
+        p[4] = KEYBOARD;
+        p[6] = mode;
+        let r = self.call(&p)?;
+        Ok(parse(&r))
     }
 
-    /// Включить режим с этими настройками
-    pub fn set_effect(&mut self, e: &Effect) -> io::Result<()> {
-        let mut palette = e.palette.clone();
-        palette.resize(8, 0);
-        let body = json!({ "profile_id": 1, "device_id": 1, "mode": e.mode, "brightness": e.brightness, "speed": e.speed, "direction": e.direction, "palette": palette });
-        self.call(SET_EFFECT, &body).map(|_| ())
+    /// Включить режим с этими настройками; прошивка сохраняет их сама
+    pub fn set_effect(&mut self, e: &Effect) -> HidResult<()> {
+        self.call(&packet(e)).map(|_| ())
+    }
+
+    /// Отправить и дождаться подтверждения той же команды (посторонние отчёты пропускаем)
+    fn call(&self, p: &[u8; 32]) -> HidResult<[u8; 32]> {
+        self.dev.write(p)?;
+        let mut r = [0u8; 32];
+        for _ in 0..8 {
+            if self.dev.read_timeout(&mut r, 300)? == 0 {
+                break;
+            }
+            if r[1] == ACK && r[2] == p[2] {
+                return Ok(r);
+            }
+        }
+        Err(hidapi::HidError::HidApiError { message: "клавиатура ZET не ответила".into() })
     }
 }
 
-/// Заголовок: магия, 0 = запрос, команда, число нулей выравнивания тела (служба его проверяет), длина JSON
-fn frame(cmd: u16, body: &Value) -> Vec<u8> {
-    let data = serde_json::to_vec(body).unwrap();
-    let pad = data.len().next_multiple_of(16) - data.len();
-    let mut msg = MAGIC.to_vec();
-    msg.extend([0, 0]);
-    msg.extend(cmd.to_le_bytes());
-    msg.extend([0, 0]);
-    msg.extend((pad as u16).to_le_bytes());
-    msg.extend((data.len() as u32).to_le_bytes());
-    msg.extend([0; 16]);
-    msg.extend(&data);
-    msg.resize(msg.len() + pad, 0);
-    msg
+/// `06 BE 15 00 <устройство> <профиль> <режим> <скорость> <яркость> <направление> 00 00` + до 4 цветов R, G, B, флаги
+fn packet(e: &Effect) -> [u8; 32] {
+    let mut p = [0u8; 32];
+    p[..3].copy_from_slice(&[REPORT, REQ, SET_EFFECT]);
+    p[4..10].copy_from_slice(&[KEYBOARD, PROFILE, e.mode, e.speed, e.brightness, e.direction]);
+    for (i, c) in e.palette.iter().take(4).enumerate() {
+        let [flags, r, g, b] = c.to_be_bytes();
+        p[12 + 4 * i..16 + 4 * i].copy_from_slice(&[r, g, b, flags]);
+    }
+    p
+}
+
+fn parse(r: &[u8; 32]) -> Effect {
+    let palette = r[12..28].chunks(4).map(|c| u32::from_be_bytes([c[3], c[0], c[1], c[2]])).collect();
+    Effect { mode: r[6], speed: r[7], brightness: r[8], direction: r[9], palette }
 }
 
 /// Младшие 16 бит mode_id — по полубайту: ступени скорости, яркости, направлений и число цветов (как KbApi.modeInfoFromId)
@@ -129,55 +115,34 @@ fn mode_info(index: u8, id: u32) -> ModeInfo {
     ModeInfo { index, speeds: (id >> 12 & 15) as u8, brights: (id >> 8 & 15) as u8, dirs: (id >> 4 & 15) as u8, colors: (id & 15) as u8 }
 }
 
-fn cipher(hex: &[u8]) -> Aes256 {
-    let key: Vec<u8> = hex.chunks(2).map(|h| u8::from_str_radix(std::str::from_utf8(h).unwrap(), 16).unwrap()).collect();
-    Aes256::new(GenericArray::from_slice(&key))
-}
-
-fn ecb(c: &Aes256, mut data: Vec<u8>, encrypt: bool) -> Vec<u8> {
-    for block in data.chunks_exact_mut(16) {
-        let block = GenericArray::from_mut_slice(block);
-        if encrypt { c.encrypt_block(block) } else { c.decrypt_block(block) }
-    }
-    data
-}
-
-fn b64(v: &Value) -> io::Result<Vec<u8>> {
-    B64.decode(v.as_str().unwrap_or_default()).map_err(io::Error::other)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn frame_matches_wkbapp() {
-        // так wkbapp.exe запрашивает эффект режима 13 (снято перехватом)
-        let f = frame(GET_EFFECT, &json!({ "mode": 13, "device_id": 1 }));
-        assert_eq!(&f[..16], &[0xaf, 0x3e, 0x5d, 0xa2, 0, 0, 0x16, 0, 0, 0, 7, 0, 0x19, 0, 0, 0]);
-        assert_eq!(&f[32..57], br#"{"device_id":1,"mode":13}"#);
-        assert_eq!(f.len(), 64);
+    fn packet_matches_wkbsvc() {
+        // режим 4, яркость 5, цвета чёрный и красный с флагом радуги — так его включает служба ZET
+        let e = Effect { mode: 4, brightness: 5, speed: 0, direction: 0, palette: vec![0, 0x01FF0000] };
+        let p = packet(&e);
+        assert_eq!(&p[..20], &[0x06, 0xBE, 0x15, 0, 1, 1, 4, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0, 0, 1]);
+        // ответ клавиатуры на чтение — тот же пакет с 7D 14
+        let mut r = p;
+        r[1..3].copy_from_slice(&[ACK, GET_EFFECT]);
+        assert_eq!(parse(&r).palette[..2], e.palette[..]);
+        assert_eq!(parse(&r).brightness, 5);
     }
 
     #[test]
     fn mode_ids_from_service() {
-        assert_eq!(mode_info(1, 0x17701), ModeInfo { index: 1, speeds: 7, brights: 7, dirs: 0, colors: 1 }); // статичный
-        assert_eq!(mode_info(3, 0x37742), ModeInfo { index: 3, speeds: 7, brights: 7, dirs: 4, colors: 2 }); // поток
-        assert_eq!(mode_info(13, 0xe0801), ModeInfo { index: 13, speeds: 0, brights: 8, dirs: 0, colors: 1 }); // своя раскраска
+        assert_eq!(mode_info(1, MODE_IDS[0]), ModeInfo { index: 1, speeds: 7, brights: 7, dirs: 0, colors: 1 }); // статичный
+        assert_eq!(mode_info(3, MODE_IDS[2]), ModeInfo { index: 3, speeds: 7, brights: 7, dirs: 4, colors: 2 }); // поток
+        assert_eq!(mode_info(13, MODE_IDS[12]), ModeInfo { index: 13, speeds: 0, brights: 8, dirs: 0, colors: 1 }); // своя раскраска
     }
 
     #[test]
-    fn ecb_roundtrip() {
-        let c = cipher(K_AUTH.as_bytes());
-        let data: Vec<u8> = (0..32).collect();
-        assert_eq!(ecb(&c, ecb(&c, data.clone(), true), false), data);
-    }
-
-    #[test]
-    #[ignore] // нужна запущенная служба ZET: cargo test -- --ignored --nocapture zet_read
+    #[ignore] // нужна клавиатура и закрытая Blade Pro Software: cargo test -- --ignored --nocapture zet_read
     fn zet_read() {
         let mut z = Zet::connect().unwrap();
-        println!("{:?}", z.modes().unwrap());
-        println!("{:?}", z.effect(MODE_STATIC).unwrap());
+        println!("{:?}", z.effect(4).unwrap());
     }
 }

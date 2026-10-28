@@ -28,7 +28,7 @@ struct Hw {
     kbd: Option<Kbd>,
 }
 
-/// Клавиатура ZET через службу Blade Pro Software; необязательна — при ошибке связи просто отключаем
+/// Клавиатура ZET напрямую по USB (zet.rs); необязательна — при ошибке связи просто отключаем
 struct Kbd {
     link: zet::Zet,
     effect: zet::Effect, // что выбрал пользователь
@@ -210,10 +210,10 @@ struct KbdView {
     effect: zet::Effect,
 }
 
-/// Подключиться к службе ZET. mode — какой режим считать включённым: служба текущий не сообщает
+/// Открыть клавиатуру ZET. mode — какой режим считать включённым: как узнать текущий, пока неизвестно
 #[tauri::command(async)]
 fn kbd_open(hw: State<'_, Shared>, mode: u8) -> Result<KbdView, String> {
-    let mut link = zet::Zet::connect().map_err(|e| format!("Служба ZET недоступна: {e}"))?;
+    let mut link = zet::Zet::connect().map_err(|e| format!("Клавиатура ZET недоступна: {e}"))?;
     let modes = link.modes().map_err(|e| e.to_string())?;
     let effect = link.effect(mode).map_err(|e| e.to_string())?;
     let brights_max = modes.iter().find(|m| m.index == zet::MODE_STATIC).map_or(6, |m| m.brights.saturating_sub(1));
@@ -229,7 +229,7 @@ fn kbd_effect(hw: State<'_, Shared>, mode: u8) -> Result<zet::Effect, String> {
     let Some(k) = &mut hw.kbd else { return Err("Клавиатура не подключена".into()) };
     k.link.effect(mode).map_err(|e| {
         hw.kbd = None;
-        format!("Связь со службой ZET потеряна: {e}")
+        format!("Связь с клавиатурой ZET потеряна: {e}")
     })
 }
 
@@ -242,7 +242,7 @@ fn kbd_set(hw: State<'_, Shared>, effect: zet::Effect) -> Result<(), String> {
     if hw.dark == 0 && hw.live.is_none() {
         hw.show_kbd();
     }
-    hw.kbd.as_ref().map(|_| ()).ok_or_else(|| "Связь со службой ZET потеряна".into())
+    hw.kbd.as_ref().map(|_| ()).ok_or_else(|| "Связь с клавиатурой ZET потеряна".into())
 }
 
 #[tauri::command]

@@ -36,7 +36,7 @@ export const app = $state({
   profiles: [] as Profile[],
   names: {} as Record<string, string>, // свои имена зон по номеру
   live: null as Live | null, // живой эффект поверх всех зон (live.rs)
-  kbd: null as { modes: KbdMode[]; effect: KbdEffect } | null, // null — нет службы Blade Pro Software
+  kbd: null as { modes: KbdMode[]; effect: KbdEffect } | null, // null — клавиатуры нет или её держит Blade Pro Software
   kbdFollow: false, // статичный цвет клавиатуры повторяет правки зон
   profile: '',
   now: 0, // секунды, общий такт анимаций
@@ -261,9 +261,9 @@ export async function toggleLive(src: Live) {
 }
 
 const KBD_STATIC = 1;
-let kbdMode = KBD_STATIC; // служба не сообщает включённый режим — помним последний выбранный здесь
+let kbdMode = KBD_STATIC; // как прочитать включённый режим, неизвестно — помним последний выбранный здесь
 
-/** Клавиатура ZET — только если стоит Blade Pro Software со своей службой */
+/** Клавиатура ZET Blade Pro, если подключена и не занята Blade Pro Software */
 export async function openKbd() {
   try {
     app.kbd = await invoke('kbd_open', { mode: kbdMode });
@@ -292,7 +292,7 @@ export async function kbdSet(effect: KbdEffect) {
     try {
       await invoke('kbd_set', { effect: e });
     } catch {
-      app.kbd = null; // служба пропала — панель клавиатуры скроется
+      app.kbd = null; // клавиатура пропала — панель скроется
       kbdPending = null;
     }
   }
