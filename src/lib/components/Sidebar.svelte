@@ -7,6 +7,7 @@
   import PanelLeftClose from '@lucide/svelte/icons/panel-left-close';
   import PanelLeftOpen from '@lucide/svelte/icons/panel-left-open';
   import { app, type Page } from '$lib/state/app.svelte';
+  import { version } from '../../../package.json'; // единственный источник версии, его же читает tauri.conf.json
 
   const NAV: [Page, string, typeof House][] = [
     ['home', 'Главная', House],
@@ -53,7 +54,7 @@
       <path d="M17 2 32 28H2Z" fill="none" stroke="url(#logo)" stroke-width="4" stroke-linejoin="round" />
     </svg>
     <b class="text">Polychrome</b>
-    <small class="text">v0.1.0</small>
+    <small class="text">v{version}</small>
   </header>
 
   <nav>

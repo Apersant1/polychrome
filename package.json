@@ -1,7 +1,7 @@
 {
   "name": "polychrome",
   "version": "0.1.0",
-  "description": "",
+  "description": "Подсветка ASRock Polychrome и клавиатуры ZET Blade Pro",
   "type": "module",
   "scripts": {
     "dev": "vite dev",
