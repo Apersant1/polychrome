@@ -1,7 +1,35 @@
-# Tauri + SvelteKit + TypeScript
+# Polychrome
 
-This template should help get you started developing with Tauri, SvelteKit and TypeScript in Vite.
+Своя программа подсветки для ASRock B760M Pro RS/D4 вместо AsrPolychromeRGB. Работает с USB-контроллером ASRock Polychrome (26CE:01A2) напрямую через HID. Протокол восстановлен из AsrPolychromeRGB.exe 2.0.190, подробности в [src-tauri/src/protocol.rs](src-tauri/src/protocol.rs).
 
-## Recommended IDE Setup
+Tauri 2 + SvelteKit (Svelte 5), только Windows.
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
+## Возможности
+
+- Режимы контроллера (статичный, дыхание, радуга, палитровые GlowStream и LuminousTide и др.), цвет, яркость, скорость. Всё видно на железе сразу и с живым превью.
+- «Применить» записывает настройки в память контроллера, и они работают без программы.
+- Профили: набор настроек всех зон, включается одним кликом.
+- Свои имена зон (Настройки → Имена зон).
+- Работа в трее и автозапуск с Windows. Пока программа запущена, подсветка гаснет при блокировке, во сне и при выключенном мониторе.
+- Живые эффекты на вкладке «Популярные»: «Музыка» (все зоны пульсируют под звук из колонок своим цветом) и «Экран» (средний цвет монитора), около 30 кадров/с. В память контроллера не записываются.
+- Горячие клавиши, пока программа запущена: `Ctrl+Alt+L` гасит или включает всю подсветку, `Ctrl+Alt+P` переключает на следующий профиль.
+- Профиль из командной строки без окна, например для Планировщика заданий:
+
+  ```
+  Polychrome.exe --profile "Вечерний"
+  ```
+
+  Применяет профиль, записывает его в контроллер и выходит. Код возврата 0 при успехе, 1 при ошибке.
+
+## Где лежат настройки
+
+`config.json` рядом с `Polychrome.exe`: профили и имена зон. Программа переносится вместе с этим файлом, поэтому её не стоит класть туда, где нет прав на запись (например, в Program Files). Папку открывает кнопка в Настройках. Если файл испорчен, программа переименует его в `config.json.bad` и начнёт с профилей по умолчанию.
+
+## Сборка
+
+```
+npm install
+npm run tauri dev      # разработка
+npm run release        # Polychrome.exe в корне проекта
+cd src-tauri && cargo test
+```

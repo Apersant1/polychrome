@@ -3,6 +3,7 @@ import { actual, split, MODE_OFF, MODE_STATIC, type Look, type RGB } from './led
 
 export type Zone = Look & { id: number; name: string };
 export type Profile = { name: string; zones: Record<string, Look> }; // ключ — номер зоны или '*' для всех
+export type Live = 'music' | 'screen';
 export type Page = 'home' | 'devices' | 'effects' | 'profiles' | 'settings';
 export type SysInfo = {
   board?: { Manufacturer: string; Product: string };
@@ -13,7 +14,8 @@ export type SysInfo = {
 
 /** На этой плате кулеры висят на ARGB #1 (проверено глазами) */
 export const FANS_ZONE = 2;
-export const zoneLabel = (z: Zone) => (z.id === FANS_ZONE ? `Вентиляторы (${z.name})` : z.name);
+export const defaultLabel = (z: Zone) => (z.id === FANS_ZONE ? `Вентиляторы (${z.name})` : z.name);
+export const zoneLabel = (z: Zone) => app.names[z.id] || defaultLabel(z);
 
 const look = (l: Look): Look => ({ mode: l.mode, color: [...l.color], bright: l.bright, speed: l.speed, palette: l.palette.map((c) => [...c] as RGB) });
 /** Одинаково ли выглядят на железе: сравниваем то, что реально уходит в контроллер */
@@ -27,9 +29,10 @@ export const app = $state({
   saved: [] as Zone[], // что лежит в памяти контроллера — для «Сбросить»
   selected: '' as string, // 'zone:2', 'gpu:0', 'ram:1'
   edit: { mode: MODE_STATIC, color: [0, 120, 255], bright: 100, speed: 50, palette: [] } as Look,
-  closing: false, // спрашиваем, записать ли изменения перед выходом
   sys: {} as SysInfo,
   profiles: [] as Profile[],
+  names: {} as Record<string, string>, // свои имена зон по номеру
+  live: null as Live | null, // живой эффект поверх всех зон (live.rs)
   profile: '',
   now: 0, // секунды, общий такт анимаций
 });
@@ -137,8 +140,8 @@ export async function apply() {
 
 export const reset = () => setLooks((zone) => app.saved.find((s) => s.id === zone.id));
 
-// Профили живут в localStorage окна приложения
-const KEY = 'polychrome.profiles';
+// Профили и имена зон живут в config.json (см. config_path в lib.rs), его же читает --profile
+const OLD_KEY = 'polychrome.profiles'; // раньше профили лежали в localStorage окна
 const preset = (name: string, l: Look): Profile => ({ name, zones: { '*': l } });
 const SEED: Profile[] = [
   preset('Геймерский', { mode: 14, color: [255, 0, 0], bright: 100, speed: 70, palette: [] }),
@@ -147,15 +150,41 @@ const SEED: Profile[] = [
   preset('Дыхание', { mode: 2, color: [140, 40, 255], bright: 100, speed: 35, palette: [] }),
 ];
 
-export function loadProfiles() {
+let persist = true; // файл не прочитался — не затираем его тем, что в памяти
+
+export async function loadConfig() {
   try {
-    app.profiles = JSON.parse(localStorage.getItem(KEY) ?? 'null') ?? SEED;
-  } catch {
+    const cfg = await invoke<{ profiles: Profile[]; names?: Record<string, string> } | null>('load_config');
+    if (cfg) {
+      app.profiles = cfg.profiles;
+      app.names = cfg.names ?? {};
+      return;
+    }
+    try {
+      app.profiles = JSON.parse(localStorage.getItem(OLD_KEY) ?? 'null') ?? SEED;
+    } catch {
+      app.profiles = SEED;
+    }
+    storeConfig(); // сразу в файл, чтобы --profile видел профили
+  } catch (e) {
+    persist = false;
     app.profiles = SEED;
+    alert(`${e}
+Профили по умолчанию, изменения не сохранятся.`);
   }
 }
 
-const storeProfiles = () => localStorage.setItem(KEY, JSON.stringify($state.snapshot(app.profiles)));
+function storeConfig() {
+  if (!persist) return;
+  invoke('save_config', { config: $state.snapshot({ profiles: app.profiles, names: app.names }) }).catch((e) => alert(e));
+}
+
+/** Пустое имя — вернуть стандартное */
+export function renameZone(id: number, name: string) {
+  if (name.trim()) app.names[id] = name.trim();
+  else delete app.names[id];
+  storeConfig();
+}
 
 export const profileLook = (p: Profile, id: number) => p.zones[id] ?? p.zones['*'];
 
@@ -180,7 +209,7 @@ export function saveProfile(name: string) {
   if (i < 0) app.profiles.push({ name, zones });
   else app.profiles[i].zones = zones;
   app.profile = name;
-  storeProfiles();
+  storeConfig();
 }
 
 export function renameProfile(from: string, to: string) {
@@ -188,7 +217,7 @@ export function renameProfile(from: string, to: string) {
   if (!p || profileExists(to)) return;
   p.name = to;
   if (app.profile === from) app.profile = to;
-  storeProfiles();
+  storeConfig();
 }
 
 /** Удаляет и возвращает функцию «Вернуть» */
@@ -198,13 +227,37 @@ export function deleteProfile(name: string) {
   const [p] = app.profiles.splice(i, 1);
   const wasActive = app.profile === name;
   if (wasActive) app.profile = '';
-  storeProfiles();
+  storeConfig();
   return () => {
     if (profileExists(p.name)) return;
     app.profiles.splice(Math.min(i, app.profiles.length), 0, p);
     if (wasActive) app.profile = p.name;
-    storeProfiles();
+    storeConfig();
   };
+}
+
+/** Повторный выбор того же эффекта выключает его */
+export async function toggleLive(src: Live) {
+  const next = app.live === src ? null : src;
+  try {
+    await invoke('set_live', { source: next });
+    app.live = next;
+  } catch (e) {
+    fail(e);
+  }
+}
+
+/** Ctrl+Alt+L: погасить всё, а если всё погашено — включить */
+export function togglePower() {
+  if (app.status !== 'ok') return;
+  setPower(app.zones.map((z) => z.id), app.zones.every((z) => z.mode === MODE_OFF));
+}
+
+/** Ctrl+Alt+P: следующий профиль по кругу */
+export function nextProfile() {
+  if (app.status !== 'ok' || !app.profiles.length) return;
+  const i = app.profiles.findIndex((p) => p.name === app.profile);
+  return useProfile(app.profiles[(i + 1) % app.profiles.length].name);
 }
 
 export async function loadSystem() {

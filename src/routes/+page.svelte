@@ -2,11 +2,12 @@
   import '../app.css';
   import { onMount } from 'svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
+  import { listen } from '@tauri-apps/api/event';
   import Minus from '@lucide/svelte/icons/minus';
   import Square from '@lucide/svelte/icons/square';
   import X from '@lucide/svelte/icons/x';
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
-  import { app, apply, connect, loadProfiles, loadSystem, unsaved, useProfile } from '$lib/app.svelte';
+  import { app, connect, loadConfig, loadSystem, nextProfile, togglePower, useProfile } from '$lib/app.svelte';
   import Sidebar from '$lib/Sidebar.svelte';
   import DeviceTree from '$lib/DeviceTree.svelte';
   import Preview from '$lib/Preview.svelte';
@@ -27,30 +28,19 @@
   };
 
   onMount(() => {
-    loadProfiles();
+    loadConfig();
     connect();
     loadSystem();
     let frame = requestAnimationFrame(function tick(ms) {
       app.now = ms / 1000;
       frame = requestAnimationFrame(tick);
     });
-    // Без записи в контроллер подсветка откатится после перезагрузки — спрашиваем перед выходом
-    const unlisten = win.onCloseRequested((e) => {
-      if (app.status !== 'ok' || !unsaved()) return;
-      e.preventDefault();
-      app.closing = true;
-    });
+    const unhotkey = listen<string>('hotkey', (e) => (e.payload === 'toggle' ? togglePower() : nextProfile()));
     return () => {
       cancelAnimationFrame(frame);
-      unlisten.then((f) => f());
+      unhotkey.then((f) => f());
     };
   });
-
-  async function saveAndQuit() {
-    await apply();
-    if (!unsaved()) win.destroy();
-    else app.closing = false; // запись не удалась — ошибка видна в баннере
-  }
 </script>
 
 <div class="app">
@@ -71,7 +61,7 @@
       <div class="window">
         <button aria-label="Свернуть" onclick={() => win.minimize()}><Minus size={16} /></button>
         <button aria-label="Развернуть" onclick={() => win.toggleMaximize()}><Square size={13} /></button>
-        <button aria-label="Закрыть" class="close" onclick={() => win.close()}><X size={17} /></button>
+        <button aria-label="Свернуть в трей" title="Свернуть в трей" class="close" onclick={() => win.close()}><X size={17} /></button>
       </div>
     </header>
 
@@ -105,21 +95,6 @@
     {/if}
   </main>
 </div>
-
-{#if app.closing}
-  <div class="scrim">
-    <div class="dialog panel" role="alertdialog" aria-modal="true" aria-labelledby="quit-title">
-      <h3 id="quit-title">Записать изменения в контроллер?</h3>
-      <p>Подсветка уже горит по-новому, но без записи после перезагрузки компьютера она вернётся к прежней.</p>
-      <div class="actions">
-        <button class="btn" onclick={() => (app.closing = false)}>Отмена</button>
-        <button class="btn" onclick={() => win.destroy()}>Выйти без записи</button>
-        <!-- svelte-ignore a11y_autofocus -->
-        <button class="btn primary" autofocus onclick={saveAndQuit}>Записать и выйти</button>
-      </div>
-    </div>
-  </div>
-{/if}
 
 <style>
   .app { display: grid; grid-template-columns: 270px 1fr; height: 100vh; }
@@ -160,10 +135,5 @@
   .fx { grid-area: fx; }
   .targets { grid-area: targets; }
   .prof { grid-area: prof; }
-  .scrim { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, 0.55); z-index: 20; }
-  .dialog { max-width: 440px; }
-  .dialog p { margin: 0 0 18px; color: var(--dim); line-height: 1.5; }
-  .actions { display: flex; justify-content: flex-end; gap: 10px; }
-  .actions .btn { padding: 10px 14px; }
   .split { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 14px; min-height: 0; align-items: start; }
 </style>

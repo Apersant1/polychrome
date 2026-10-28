@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { app, select, placeholders, FANS_ZONE } from './app.svelte';
+  import { app, select, placeholders, zoneLabel } from './app.svelte';
   import EffectStrip from './EffectStrip.svelte';
   import { MODES } from './leds';
 
@@ -18,7 +18,7 @@
       {#each app.zones as z (z.id)}
         <button class="card" onclick={() => edit(`zone:${z.id}`)}>
           <EffectStrip look={z} />
-          <b>{z.id === FANS_ZONE ? `Вентиляторы (${z.name})` : z.name}</b>
+          <b>{zoneLabel(z)}</b>
           <small>Зона {z.id} · {MODES[z.mode] ?? `режим ${z.mode}`}{z.mode > 1 ? ` · ${z.speed}%` : ''}</small>
         </button>
       {/each}
