@@ -7,14 +7,17 @@
   import Square from '@lucide/svelte/icons/square';
   import X from '@lucide/svelte/icons/x';
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
+  import Save from '@lucide/svelte/icons/save';
+  import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import { app } from '$lib/state/app.svelte';
-  import { connect, togglePower } from '$lib/state/board.svelte';
+  import { apply, connect, reset, togglePower, unsaved } from '$lib/state/board.svelte';
   import { loadConfig } from '$lib/state/config.svelte';
   import { openKbd } from '$lib/state/keyboard.svelte';
-  import { nextProfile, useProfile } from '$lib/state/profiles.svelte';
+  import { nextProfile } from '$lib/state/profiles.svelte';
   import { loadSystem } from '$lib/state/system.svelte';
   import Sidebar from '$lib/components/Sidebar.svelte';
   import Profiles from '$lib/components/Profiles.svelte';
+  import ProfileMenu from '$lib/components/ProfileMenu.svelte';
   import HomePage from '$lib/pages/HomePage.svelte';
   import EffectsPage from '$lib/pages/EffectsPage.svelte';
   import DevicesPage from '$lib/pages/DevicesPage.svelte';
@@ -28,6 +31,15 @@
     profiles: ['Профили', 'Наборы настроек всех зон, переключаются одним кликом'],
     settings: ['Настройки', 'Контроллер и сохранение'],
   };
+
+  let saving = $state(false);
+  const changed = $derived(app.status === 'ok' && unsaved());
+
+  async function save() {
+    saving = true;
+    await apply();
+    saving = false;
+  }
 
   onMount(() => {
     loadConfig().then(openKbd); // режим клавиатуры, который считать включённым, лежит в конфиге
@@ -54,10 +66,12 @@
         <p data-tauri-drag-region>{TITLES[app.page][1]}</p>
       </div>
       <div class="tools">
-        <select aria-label="Профиль" value={app.profile} onchange={(e) => useProfile(e.currentTarget.value)} disabled={app.status !== 'ok'}>
-          <option value="" disabled>Профиль…</option>
-          {#each app.profiles as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
-        </select>
+        <!-- правки видны на железе сразу; сохранение нужно, чтобы они пережили выключение ПК -->
+        {#if changed}
+          <button class="btn save" disabled={saving} title="Записать в память контроллера: иначе после выключения ПК вернётся сохранённое" onclick={save}><Save size={16} />Сохранить</button>
+          <button class="icon-btn" title="Вернуть сохранённое в контроллере" onclick={reset}><RotateCcw size={18} /></button>
+        {/if}
+        <ProfileMenu />
         <button class="icon-btn" title="Переподключить контроллер" onclick={connect}><RefreshCw size={18} /></button>
       </div>
       <div class="window">
@@ -79,7 +93,7 @@
     {:else if app.page === 'effects'}
       <EffectsPage />
     {:else if app.page === 'profiles'}
-      <Profiles grid />
+      <Profiles />
     {:else if app.page === 'devices'}
       <DevicesPage />
     {:else}
@@ -89,14 +103,15 @@
 </div>
 
 <style>
-  .app { display: grid; grid-template-columns: 270px 1fr; height: 100vh; }
+  .app { display: grid; grid-template-columns: auto 1fr; height: 100vh; }
   main { display: flex; flex-direction: column; gap: 14px; min-width: 0; min-height: 0; padding: 0 18px 16px 14px; }
   header { display: flex; align-items: center; gap: 16px; padding: 22px 0 6px 16px; }
   header > div:first-child { flex: 1; min-width: 0; }
   h1 { margin: 0; font-size: 22px; font-weight: 600; }
   header p { margin: 6px 0 0; color: var(--dim); }
   .tools { display: flex; gap: 10px; margin-top: 20px; }
-  .tools select { min-width: 180px; }
+  .save { display: flex; align-items: center; gap: 8px; padding: 0 14px; border-color: rgba(245, 181, 68, 0.5); background: rgba(245, 181, 68, 0.1); color: var(--warn); }
+  .save:hover:not(:disabled) { background: rgba(245, 181, 68, 0.18); }
   .window { position: fixed; top: 0; right: 0; display: flex; }
   .window button { display: grid; place-items: center; width: 46px; height: 32px; border: 0; background: none; color: #c4ccda; }
   .window button:hover { background: rgba(255, 255, 255, 0.08); }

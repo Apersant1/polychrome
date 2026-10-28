@@ -74,7 +74,7 @@
   </div>
 {/snippet}
 
-<div class="panel effects">
+<div class="panel effects" class:all>
   {#if all}
     {#each tabs as [title, modes] (title)}
       <h3>{title}</h3>
@@ -86,12 +86,15 @@
         <button role="tab" aria-selected={tab === i} class:on={tab === i} onclick={() => (tab = i)}>{title}</button>
       {/each}
     </div>
-    {@render cards(tabs[tab][1])}
+    <div class="scroll">{@render cards(tabs[tab][1])}</div>
   {/if}
 </div>
 
 <style>
   .effects { overflow: auto; padding-top: 6px; }
+  /* на главной вкладки стоят, прокручиваются только карточки — снизу остаётся отступ панели */
+  .effects:not(.all) { display: flex; flex-direction: column; overflow: hidden; }
+  .scroll { flex: 1; min-height: 0; overflow: auto; margin: 0 -8px; padding: 2px 8px 4px; } /* поля — чтобы не резать свечение выбранной карточки */
   .effects > h3 { margin-top: 16px; }
   .tabs { display: flex; gap: 24px; border-bottom: 1px solid var(--border); margin-bottom: 14px; white-space: nowrap; }
   .tabs button { padding: 12px 4px; border: 0; background: none; color: var(--dim); box-shadow: inset 0 -2px 0 transparent; }

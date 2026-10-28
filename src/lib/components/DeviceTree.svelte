@@ -15,6 +15,8 @@
   const fans = $derived(app.zones.filter((z) => z.id === FANS_ZONE));
   let closed = $state<Record<string, boolean>>({});
 
+  const lit = $derived(app.zones.filter((z) => z.mode !== MODE_OFF).length);
+
   const dot = (z: Zone) => (z.mode === MODE_OFF ? '#2a3140' : css(actual(z).rgb));
 </script>
 
@@ -71,7 +73,20 @@
 {/snippet}
 
 <div class="panel tree">
-  <h3>Устройства</h3>
+  <h3>
+    Устройства
+    <!-- Пока включены не все, тумблер выключен и включает все (так советует Adobe Spectrum) -->
+    <input
+      type="checkbox"
+      role="switch"
+      class="switch"
+      title="Подсветка всех зон: светятся {lit} из {app.zones.length}"
+      aria-label="Подсветка всех зон"
+      disabled={app.status !== 'ok'}
+      checked={lit > 0 && lit === app.zones.length}
+      onchange={() => setPower(app.zones.map((z) => z.id), lit !== app.zones.length)}
+    />
+  </h3>
   {@render group('board', app.sys.board?.Product ?? 'Материнская плата', CircuitBoard, boardRows)}
   {#if fans.length}{@render group('fans', 'Охлаждение', Fan, fanRows)}{/if}
   {#if app.kbd}{@render group('kbd', 'Клавиатура', Keyboard, kbdRows)}{/if}
@@ -81,6 +96,7 @@
 
 <style>
   .tree { overflow: auto; }
+  .tree > h3 { display: flex; align-items: center; justify-content: space-between; }
   section { margin-bottom: 6px; }
   .head {
     display: flex;

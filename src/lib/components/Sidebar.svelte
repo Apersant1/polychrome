@@ -4,6 +4,8 @@
   import Sparkles from '@lucide/svelte/icons/sparkles';
   import User from '@lucide/svelte/icons/user';
   import Settings from '@lucide/svelte/icons/settings';
+  import PanelLeftClose from '@lucide/svelte/icons/panel-left-close';
+  import PanelLeftOpen from '@lucide/svelte/icons/panel-left-open';
   import { app, type Page } from '$lib/state/app.svelte';
 
   const NAV: [Page, string, typeof House][] = [
@@ -14,12 +16,33 @@
     ['settings', 'Настройки', Settings],
   ];
 
+  // Свёрнута ли панель до иконок: настройка этого компьютера, хватает localStorage
+  const KEY = 'polychrome.sidebar';
+  let collapsed = $state(load());
+
+  function load() {
+    try {
+      return localStorage.getItem(KEY) === 'collapsed';
+    } catch {
+      return false;
+    }
+  }
+
+  function toggle() {
+    collapsed = !collapsed;
+    try {
+      localStorage.setItem(KEY, collapsed ? 'collapsed' : '');
+    } catch {
+      // не критично: при следующем запуске панель просто будет развёрнута
+    }
+  }
+
   const status = $derived(
     app.status === 'ok' ? 'Контроллер подключён' : app.status === 'connecting' ? 'Подключение…' : 'Нет связи с контроллером',
   );
 </script>
 
-<aside>
+<aside class:collapsed>
   <header data-tauri-drag-region>
     <svg width="34" height="30" viewBox="0 0 34 30" aria-hidden="true">
       <defs>
@@ -29,21 +52,24 @@
       </defs>
       <path d="M17 2 32 28H2Z" fill="none" stroke="url(#logo)" stroke-width="4" stroke-linejoin="round" />
     </svg>
-    <b>Polychrome</b>
-    <small>v0.1.0</small>
+    <b class="text">Polychrome</b>
+    <small class="text">v0.1.0</small>
   </header>
 
   <nav>
     {#each NAV as [page, label, Icon] (page)}
-      <button class:active={app.page === page} onclick={() => (app.page = page)}>
-        <Icon size={20} />{label}
+      <button class:active={app.page === page} title={collapsed ? label : undefined} onclick={() => (app.page = page)}>
+        <Icon size={20} /><span class="text">{label}</span>
       </button>
     {/each}
   </nav>
 
   <footer>
-    <p class="status"><i class={app.status}></i>{status}</p>
-    <ul>
+    <button class="fold" title={collapsed ? 'Развернуть панель' : undefined} aria-expanded={!collapsed} onclick={toggle}>
+      {#if collapsed}<PanelLeftOpen size={20} />{:else}<PanelLeftClose size={20} /><span class="text">Свернуть</span>{/if}
+    </button>
+    <p class="status" title={collapsed ? status : undefined}><i class={app.status}></i><span class="text">{status}</span></p>
+    <ul class="text">
       <li><i class={app.status}></i>ASRock Polychrome USB</li>
       <li><i></i>ASUS Aura Sync <span>скоро</span></li>
       <li><i></i>OpenRGB <span>скоро</span></li>
@@ -57,14 +83,21 @@
     flex-direction: column;
     background: var(--panel);
     border-right: 1px solid var(--border);
+    width: 270px;
     padding: 22px 18px;
     min-height: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    transition: width 0.2s, padding 0.2s;
   }
+  aside.collapsed { width: 72px; padding: 22px 12px; }
+  .collapsed .text { display: none; }
+  .collapsed .status { justify-content: center; }
   header { display: flex; align-items: center; gap: 12px; padding: 0 4px 34px; }
   header b { font-size: 20px; font-weight: 600; }
   header small { margin-left: auto; color: var(--dim); align-self: flex-start; }
   nav { display: flex; flex-direction: column; gap: 6px; }
-  nav button {
+  nav button, .fold {
     display: flex;
     align-items: center;
     gap: 16px;
@@ -76,7 +109,8 @@
     color: #c4ccda;
     text-align: left;
   }
-  nav button:hover { background: var(--card); }
+  nav button:hover, .fold:hover { background: var(--card); }
+  .fold { width: 100%; margin-bottom: 12px; font-size: 14px; color: var(--dim); }
   nav button.active {
     background: linear-gradient(90deg, rgba(47, 124, 246, 0.28), rgba(47, 124, 246, 0.1));
     color: #5aa0ff;

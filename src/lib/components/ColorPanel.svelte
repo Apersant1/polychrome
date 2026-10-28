@@ -3,9 +3,10 @@
   import Gauge from '@lucide/svelte/icons/gauge';
   import Plus from '@lucide/svelte/icons/plus';
   import X from '@lucide/svelte/icons/x';
+  import CopyCheck from '@lucide/svelte/icons/copy-check';
   import ColorPicker from './ColorPicker.svelte';
   import { app } from '$lib/state/app.svelte';
-  import { change, setPower, zoneOf, zoneLabel } from '$lib/state/board.svelte';
+  import { change, setPower, toAll, zoneOf, zoneLabel } from '$lib/state/board.svelte';
   import { MODES, MAX_PALETTE, MODE_OFF, css, hex, split, usesColor, usesPalette, animated, type RGB } from '$lib/leds';
 
   let sel = $state(0); // какой цвет палитры правим
@@ -46,7 +47,12 @@
 {/snippet}
 
 <div class="panel">
-  <h3>Цвет{#if zone}<span>· {zoneLabel(zone)}</span>{/if}</h3>
+  <h3>
+    Цвет{#if zone}<span>· {zoneLabel(zone)}</span>{/if}
+    {#if zone && mode !== MODE_OFF}
+      <button class="all" disabled={app.status !== 'ok'} title="Такой же цвет и режим на все зоны" onclick={toAll}><CopyCheck size={14} />На все</button>
+    {/if}
+  </h3>
 
   {#if !zone}
     <p class="empty">Выберите зону слева</p>
@@ -87,8 +93,10 @@
 
 <style>
   .panel { display: flex; flex-direction: column; gap: 14px; overflow: auto; }
-  h3 { margin-bottom: 0; }
-  h3 span { margin-left: 6px; color: var(--dim); font-weight: 400; }
+  h3 { display: flex; align-items: center; margin-bottom: 0; }
+  h3 span { margin-left: 6px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--dim); font-weight: 400; }
+  .all { display: flex; align-items: center; gap: 6px; flex: none; margin-left: auto; padding: 4px 8px; border: 1px solid var(--border-strong); border-radius: 6px; background: none; color: var(--dim); font: inherit; font-size: 12px; font-weight: 500; }
+  .all:hover:not(:disabled) { color: var(--text); background: var(--card); }
   .mode { margin: 0; color: var(--dim); font-size: 13px; }
   .mode b { color: var(--text); font-weight: 500; }
   .empty { display: grid; justify-items: center; gap: 12px; margin: auto 0; color: var(--dim); text-align: center; }

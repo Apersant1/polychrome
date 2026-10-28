@@ -1,6 +1,7 @@
 // Профили: наборы настроек всех зон и клавиатуры, хранятся в config.json.
 
 import type { KbdEffect } from '$lib/api';
+import { actual, css, hsv, usesColor, usesPalette, MODE_OFF } from '$lib/leds';
 import { app, type Profile } from './app.svelte';
 import { apply, look, same, setLooks } from './board.svelte';
 import { storeConfig } from './config.svelte';
@@ -9,6 +10,18 @@ import { kbdSet } from './keyboard.svelte';
 export const profileLook = (p: Profile, id: number) => p.zones[id] ?? p.zones['*'];
 
 export const profileExists = (name: string) => app.profiles.some((p) => p.name === name);
+
+/** Полоска цветов профиля по зонам (CSS-градиент): статичная подсказка, а не анимация */
+export function profileSwatch(p: Profile) {
+  const stops = app.zones.flatMap((z) => {
+    const l = profileLook(p, z.id);
+    if (!l || l.mode === MODE_OFF) return ['#1a212c'];
+    if (usesPalette(l.mode)) return actual(l).palette.map((c) => css(c));
+    if (!usesColor(l.mode)) return [0, 0.33, 0.66].map((h) => css(hsv(h, 1, 1)));
+    return [css(actual(l).rgb)];
+  });
+  return `linear-gradient(90deg, ${(stops.length > 1 ? stops : [...stops, ...stops]).join(', ')})`;
+}
 
 /** Выбор профиля — осознанное действие, поэтому сразу пишем его в контроллер */
 export function useProfile(name: string) {

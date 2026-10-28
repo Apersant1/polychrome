@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   import Plus from '@lucide/svelte/icons/plus';
   import Ellipsis from '@lucide/svelte/icons/ellipsis';
   import Save from '@lucide/svelte/icons/save';
@@ -6,11 +6,8 @@
   import Pencil from '@lucide/svelte/icons/pencil';
   import Trash from '@lucide/svelte/icons/trash';
   import { app, type Profile } from '$lib/state/app.svelte';
-  import { useProfile, saveProfile, renameProfile, deleteProfile, profileChanged, profileExists, profileLook } from '$lib/state/profiles.svelte';
-  import { actual, css, hsv, usesColor, usesPalette, MODE_OFF } from '$lib/leds';
+  import { useProfile, saveProfile, renameProfile, deleteProfile, profileChanged, profileExists, profileSwatch as swatch } from '$lib/state/profiles.svelte';
 
-  /** grid — крупные карточки во всю страницу («Профили») */
-  let { grid = false }: { grid?: boolean } = $props();
   let naming = $state(false);
   let renaming = $state(''); // имя профиля, который сейчас переименовываем
   let name = $state('');
@@ -20,18 +17,6 @@
   const ready = $derived(app.status === 'ok');
   const trimmed = $derived(name.trim());
   const taken = $derived(trimmed !== renaming && profileExists(trimmed));
-
-  /** Полоска цветов профиля по зонам: статичная подсказка, а не анимация */
-  function swatch(p: Profile) {
-    const stops = app.zones.flatMap((z) => {
-      const l = profileLook(p, z.id);
-      if (!l || l.mode === MODE_OFF) return ['#1a212c'];
-      if (usesPalette(l.mode)) return actual(l).palette.map((c) => css(c));
-      if (!usesColor(l.mode)) return [0, 0.33, 0.66].map((h) => css(hsv(h, 1, 1)));
-      return [css(actual(l).rgb)];
-    });
-    return `linear-gradient(90deg, ${(stops.length > 1 ? stops : [...stops, ...stops]).join(', ')})`;
-  }
 
   function startRename(p: Profile) {
     renaming = p.name;
@@ -89,7 +74,7 @@
   />
 {/snippet}
 
-<div class="panel profiles" class:grid>
+<div class="panel profiles">
   <h3>Профили</h3>
   <div class="list">
     {#if naming}
@@ -135,18 +120,14 @@
 {/if}
 
 <style>
-  .profiles { display: flex; align-items: center; gap: 24px; padding: 14px 20px; }
+  .profiles { display: flex; flex-direction: column; gap: 24px; padding: 14px 20px; }
   .profiles > h3 { margin: 0; }
-  .list { display: flex; gap: 14px; overflow-x: auto; flex: 1; padding: 2px; }
-  .grid { flex-direction: column; align-items: stretch; }
-  .grid .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); overflow: visible; }
+  .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; padding: 2px; }
   .new {
     display: flex;
     flex-direction: column;
     justify-content: center;
     gap: 4px;
-    flex: none;
-    width: 180px;
     min-height: 64px;
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -173,8 +154,6 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    flex: none;
-    width: 180px;
     padding: 8px 10px 9px;
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -182,13 +161,11 @@
   }
   .card:hover { background: var(--card-hover); }
   .card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-  .grid .card { width: auto; }
   .use { display: flex; flex-direction: column; gap: 8px; padding: 0; border: 0; background: none; text-align: left; font: inherit; color: inherit; }
   .card.on .title { color: #5aa0ff; }
   .title { display: flex; align-items: center; gap: 6px; padding-right: 76px; min-height: 22px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .title i { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); flex: none; }
-  .swatch { display: block; height: 26px; border-radius: 6px; filter: saturate(1.2); }
-  .grid .swatch { height: 60px; }
+  .swatch { display: block; height: 60px; border-radius: 6px; filter: saturate(1.2); }
   .acts { position: absolute; right: 6px; bottom: 6px; display: flex; gap: 2px; }
   .acts button {
     display: grid;
