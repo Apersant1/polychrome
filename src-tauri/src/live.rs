@@ -1,7 +1,7 @@
 //! Живые эффекты поверх настроек пользователя: ~30 кадров/с по звуку или по экрану.
-//! Кадры не меняют зоны пользователя и не попадают в память контроллера (см. Hw::paint_live).
+//! Кадры не меняют настройки пользователя и не попадают в память устройств (см. devices::Hw).
 
-use crate::Shared;
+use crate::devices::Shared;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use serde::Deserialize;
 use std::{
@@ -35,10 +35,7 @@ pub fn run(app: AppHandle) {
             std::thread::sleep(frame.saturating_duration_since(Instant::now()));
             frame = frame.max(Instant::now() - Duration::from_millis(33)); // после долгой паузы не догоняем пропущенное
             let state = app.state::<Shared>();
-            let src = {
-                let hw = state.lock().unwrap();
-                if hw.dark != 0 || (hw.ctrl.is_none() && hw.kbd.is_none()) { None } else { hw.live }
-            };
+            let src = state.lock().unwrap().live_source();
             // захват звука держим открытым, только пока он нужен
             if src != Some(Source::Music) {
                 audio = None;
@@ -49,11 +46,7 @@ pub fn run(app: AppHandle) {
                 Some(Source::Music) => {
                     let rms = audio.as_ref().map_or(0.0, |(_, level): &(cpal::Stream, Arc<AtomicU32>)| f32::from_bits(level.swap(0, Relaxed)));
                     let k = env.next(rms);
-                    let mut hw = state.lock().unwrap();
-                    hw.paint_live(Source::Music, |z| scale(z.rgb, k));
-                    if let Some(base) = hw.kbd_base() {
-                        hw.paint_kbd(Source::Music, scale(base, k));
-                    }
+                    state.lock().unwrap().frame(Source::Music, |base| scale(base, k));
                 }
                 Some(Source::Screen) => {
                     let Some(c) = screen_color() else { continue };
@@ -61,9 +54,7 @@ pub fn run(app: AppHandle) {
                         screen[i] += (c[i] as f32 - screen[i]) * 0.3; // сглаживание, чтобы не мерцало на сменах кадра
                     }
                     let c = screen.map(|v| v.round() as u8);
-                    let mut hw = state.lock().unwrap();
-                    hw.paint_live(Source::Screen, |_| c);
-                    hw.paint_kbd(Source::Screen, c);
+                    state.lock().unwrap().frame(Source::Screen, |_| c);
                 }
                 None => {}
             }

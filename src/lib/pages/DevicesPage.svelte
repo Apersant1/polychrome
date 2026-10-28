@@ -1,7 +1,9 @@
 <script lang="ts">
-  import { app, select, placeholders, zoneLabel } from './app.svelte';
-  import EffectStrip from './EffectStrip.svelte';
-  import { MODES } from './leds';
+  import { app } from '$lib/state/app.svelte';
+  import { select, zoneLabel } from '$lib/state/board.svelte';
+  import { placeholders } from '$lib/state/system.svelte';
+  import EffectStrip from '$lib/components/EffectStrip.svelte';
+  import { MODES } from '$lib/leds';
 
   const extra = $derived(placeholders());
 

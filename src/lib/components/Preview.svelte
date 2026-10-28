@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { app, placeholders, FANS_ZONE } from './app.svelte';
-  import { led, css, mix, type Look, type RGB } from './leds';
+  import { app } from '$lib/state/app.svelte';
+  import { FANS_ZONE } from '$lib/state/board.svelte';
+  import { placeholders } from '$lib/state/system.svelte';
+  import { led, css, mix, type Look, type RGB } from '$lib/leds';
 
   // Сцена 800×560, растягивается по месту с сохранением пропорций
   const W = 800, H = 560;

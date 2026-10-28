@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { app, kbdSet, kbdSetMode, setKbdFollow } from './app.svelte';
+  import { app } from '$lib/state/app.svelte';
+  import { kbdSet, kbdSetMode, setKbdFollow } from '$lib/state/keyboard.svelte';
 
   // Номера режимов клавиатуры → KB_MODE_* из прошивки Whiftec (kb_def.py)
   const NAMES = ['', 'Статичный', 'Дыхание', 'Поток', 'Дождь', 'Бегущий огонь', 'Звёзды', 'Реакция на нажатие', 'Капли', 'Крест', 'Рябь', 'Аврора', 'Тепловая карта', 'Своя раскраска'];

@@ -1,13 +1,15 @@
 <script lang="ts">
-  import { invoke } from '@tauri-apps/api/core';
   import { onMount } from 'svelte';
-  import { app, connect, defaultLabel, renameZone } from './app.svelte';
+  import { api } from '$lib/api';
+  import { app } from '$lib/state/app.svelte';
+  import { connect, defaultLabel } from '$lib/state/board.svelte';
+  import { renameZone } from '$lib/state/config.svelte';
 
   let autostart = $state(false);
-  onMount(() => invoke<boolean>('get_autostart').then((on) => (autostart = on)));
+  onMount(() => api.getAutostart().then((on) => (autostart = on)));
 
   function setAutostart(on: boolean) {
-    invoke('set_autostart', { on }).then(() => (autostart = on), (e) => alert(e));
+    api.setAutostart(on).then(() => (autostart = on), (e) => alert(e));
   }
 </script>
 
@@ -57,7 +59,7 @@
     <h3>Профили и расписание</h3>
     <p>Профили и имена зон лежат в файле <code>config.json</code> рядом с программой: переносите их вместе.</p>
     <p>Профиль включается и без окна: <code>Polychrome.exe --profile "Вечерний"</code>. Это можно поставить в Планировщик заданий Windows, например на 22:00.</p>
-    <button class="btn" onclick={() => invoke('open_config_dir').catch((e) => alert(e))}>Открыть папку программы</button>
+    <button class="btn" onclick={() => api.openConfigDir().catch((e) => alert(e))}>Открыть папку программы</button>
   </section>
 </div>
 

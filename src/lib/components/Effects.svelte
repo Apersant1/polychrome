@@ -1,8 +1,11 @@
 <script lang="ts">
   import Check from '@lucide/svelte/icons/check';
-  import { app, change, toggleLive, type Live } from './app.svelte';
+  import type { Live } from '$lib/api';
+  import { app } from '$lib/state/app.svelte';
+  import { change } from '$lib/state/board.svelte';
+  import { toggleLive } from '$lib/state/live.svelte';
   import EffectStrip from './EffectStrip.svelte';
-  import { MODES, HINTS, type RGB } from './leds';
+  import { MODES, HINTS, type RGB } from '$lib/leds';
 
   /** all — показать все группы сразу (страница «Эффекты») */
   let { all = false }: { all?: boolean } = $props();

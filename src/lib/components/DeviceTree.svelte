@@ -5,8 +5,10 @@
   import MemoryStick from '@lucide/svelte/icons/memory-stick';
   import Gpu from '@lucide/svelte/icons/gpu';
   import Keyboard from '@lucide/svelte/icons/keyboard';
-  import { app, select, placeholders, setPower, zoneLabel, FANS_ZONE, type Zone } from './app.svelte';
-  import { css, actual, MODE_OFF } from './leds';
+  import { app, type Zone } from '$lib/state/app.svelte';
+  import { select, setPower, zoneLabel, FANS_ZONE } from '$lib/state/board.svelte';
+  import { placeholders } from '$lib/state/system.svelte';
+  import { css, actual, MODE_OFF } from '$lib/leds';
 
   const extra = $derived(placeholders());
   const board = $derived(app.zones.filter((z) => z.id !== FANS_ZONE));

@@ -7,17 +7,18 @@
   import Square from '@lucide/svelte/icons/square';
   import X from '@lucide/svelte/icons/x';
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
-  import { app, connect, loadConfig, loadSystem, nextProfile, openKbd, togglePower, useProfile } from '$lib/app.svelte';
-  import Sidebar from '$lib/Sidebar.svelte';
-  import DeviceTree from '$lib/DeviceTree.svelte';
-  import Preview from '$lib/Preview.svelte';
-  import ColorPanel from '$lib/ColorPanel.svelte';
-  import Effects from '$lib/Effects.svelte';
-  import ApplyPanel from '$lib/ApplyPanel.svelte';
-  import Profiles from '$lib/Profiles.svelte';
-  import DevicesPage from '$lib/DevicesPage.svelte';
-  import SettingsPage from '$lib/SettingsPage.svelte';
-  import KbdPanel from '$lib/KbdPanel.svelte';
+  import { app } from '$lib/state/app.svelte';
+  import { connect, togglePower } from '$lib/state/board.svelte';
+  import { loadConfig } from '$lib/state/config.svelte';
+  import { openKbd } from '$lib/state/keyboard.svelte';
+  import { nextProfile, useProfile } from '$lib/state/profiles.svelte';
+  import { loadSystem } from '$lib/state/system.svelte';
+  import Sidebar from '$lib/components/Sidebar.svelte';
+  import Profiles from '$lib/components/Profiles.svelte';
+  import HomePage from '$lib/pages/HomePage.svelte';
+  import EffectsPage from '$lib/pages/EffectsPage.svelte';
+  import DevicesPage from '$lib/pages/DevicesPage.svelte';
+  import SettingsPage from '$lib/pages/SettingsPage.svelte';
 
   const win = getCurrentWindow();
   const TITLES = {
@@ -74,24 +75,9 @@
     {/if}
 
     {#if app.page === 'home'}
-      <div class="home">
-        <div class="tree"><DeviceTree /></div>
-        <div class="view"><Preview /></div>
-        {#if app.selected === 'kbd' && app.kbd}
-          <div class="kbdpanel"><KbdPanel /></div>
-          <div class="fx"><Effects /></div>
-        {:else}
-          <div class="color"><ColorPanel /></div>
-          <div class="fx"><Effects /></div>
-          <div class="targets"><ApplyPanel /></div>
-        {/if}
-        <div class="prof"><Profiles /></div>
-      </div>
+      <HomePage />
     {:else if app.page === 'effects'}
-      <div class="split">
-        <Effects all />
-        <ColorPanel />
-      </div>
+      <EffectsPage />
     {:else if app.page === 'profiles'}
       <Profiles grid />
     {:else if app.page === 'devices'}
@@ -125,22 +111,4 @@
     border: 1px solid rgba(255, 107, 107, 0.4);
     background: rgba(255, 107, 107, 0.08);
   }
-  .home {
-    flex: 1;
-    display: grid;
-    grid-template-columns: 250px minmax(0, 1fr) 330px;
-    grid-template-rows: minmax(0, 1.25fr) minmax(0, 1fr) auto;
-    grid-template-areas: 'tree view color' 'tree fx targets' 'prof prof prof';
-    gap: 14px;
-    min-height: 0;
-  }
-  .home > div { display: grid; min-height: 0; min-width: 0; }
-  .tree { grid-area: tree; }
-  .view { grid-area: view; }
-  .color { grid-area: color; }
-  .fx { grid-area: fx; }
-  .targets { grid-area: targets; }
-  .prof { grid-area: prof; }
-  .kbdpanel { grid-column: 3; grid-row: 1 / 3; }
-  .split { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 14px; min-height: 0; align-items: start; }
 </style>

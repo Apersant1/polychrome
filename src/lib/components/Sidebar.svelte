@@ -4,7 +4,7 @@
   import Sparkles from '@lucide/svelte/icons/sparkles';
   import User from '@lucide/svelte/icons/user';
   import Settings from '@lucide/svelte/icons/settings';
-  import { app, type Page } from './app.svelte';
+  import { app, type Page } from '$lib/state/app.svelte';
 
   const NAV: [Page, string, typeof House][] = [
     ['home', 'Главная', House],

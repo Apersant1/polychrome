@@ -5,18 +5,9 @@
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import Pencil from '@lucide/svelte/icons/pencil';
   import Trash from '@lucide/svelte/icons/trash';
-  import {
-    app,
-    useProfile,
-    saveProfile,
-    renameProfile,
-    deleteProfile,
-    profileChanged,
-    profileExists,
-    profileLook,
-    type Profile,
-  } from './app.svelte';
-  import { actual, css, hsv, usesColor, usesPalette, MODE_OFF } from './leds';
+  import { app, type Profile } from '$lib/state/app.svelte';
+  import { useProfile, saveProfile, renameProfile, deleteProfile, profileChanged, profileExists, profileLook } from '$lib/state/profiles.svelte';
+  import { actual, css, hsv, usesColor, usesPalette, MODE_OFF } from '$lib/leds';
 
   /** grid — крупные карточки во всю страницу («Профили») */
   let { grid = false }: { grid?: boolean } = $props();

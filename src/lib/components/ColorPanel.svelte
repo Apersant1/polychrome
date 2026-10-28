@@ -3,8 +3,9 @@
   import Gauge from '@lucide/svelte/icons/gauge';
   import Plus from '@lucide/svelte/icons/plus';
   import X from '@lucide/svelte/icons/x';
-  import { app, change, setPower, zoneOf, zoneLabel } from './app.svelte';
-  import { MODES, PRESETS, MAX_PALETTE, MODE_OFF, css, hex, hsv, toHsv, split, usesColor, usesPalette, animated, type RGB } from './leds';
+  import { app } from '$lib/state/app.svelte';
+  import { change, setPower, zoneOf, zoneLabel } from '$lib/state/board.svelte';
+  import { MODES, PRESETS, MAX_PALETTE, MODE_OFF, css, hex, hsv, toHsv, split, usesColor, usesPalette, animated, type RGB } from '$lib/leds';
 
   const SIZE = 130;
   const RECENT_KEY = 'polychrome.recent';

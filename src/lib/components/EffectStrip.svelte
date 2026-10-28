@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { app } from './app.svelte';
-  import { led, css, type Look } from './leds';
+  import { app } from '$lib/state/app.svelte';
+  import { led, css, type Look } from '$lib/leds';
 
   /** wave — насколько линия изгибается (0 — прямая) */
   let { look, wave = 0 }: { look: Look; wave?: number } = $props();

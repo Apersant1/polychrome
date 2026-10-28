@@ -132,13 +132,15 @@ impl Controller {
     }
 
     /// Светодиодов на каждом из 8 каналов (ответ на 14 02)
+    #[allow(dead_code)] // прямой режим по диодам проверен на железе, ждёт Ambilight по диодам
     pub fn led_counts(&self) -> HidResult<[u8; 8]> {
         let r = self.send(READ_CONFIG, &[2])?;
         Ok(r[4..12].try_into().unwrap())
     }
 
+    #[allow(dead_code)]
     /// Цвета всех диодов всех каналов подряд, в порядке каналов (длины — led_counts).
-    /// Не проверено на железе.
+    /// Проверено на B760M Pro RS/D4 (direct_stream_demo).
     pub fn write_leds(&self, colors: &[[u8; 3]]) -> HidResult<()> {
         for p in led_packets(colors) {
             self.dev.write(&p)?;
@@ -150,6 +152,7 @@ impl Controller {
     }
 }
 
+#[allow(dead_code)]
 /// Поток цветов по диодам — как FUN_004acbcc в AsrPolychromeRGB.exe 2.0.191:
 /// `10 00 FF E3 00 00 <всего, LE16>` + 18 цветов, затем `10 00 FF E4` + по 19 цветов
 pub fn led_packets(colors: &[[u8; 3]]) -> Vec<[u8; 65]> {

@@ -1,6 +1,7 @@
 ﻿<script lang="ts">
-  import { app, apply, reset, toAll, setPower, unsaved, zoneOf, zoneLabel } from './app.svelte';
-  import { MODES, MODE_OFF, actual, css } from './leds';
+  import { app } from '$lib/state/app.svelte';
+  import { apply, reset, toAll, setPower, unsaved, zoneOf, zoneLabel } from '$lib/state/board.svelte';
+  import { MODES, MODE_OFF, actual, css } from '$lib/leds';
 
   const zone = $derived(zoneOf(app.selected));
   const ids = $derived(app.zones.map((z) => z.id));
