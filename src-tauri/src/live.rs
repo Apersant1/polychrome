@@ -37,7 +37,7 @@ pub fn run(app: AppHandle) {
             let state = app.state::<Shared>();
             let src = {
                 let hw = state.lock().unwrap();
-                if hw.dark != 0 || hw.ctrl.is_none() { None } else { hw.live }
+                if hw.dark != 0 || (hw.ctrl.is_none() && hw.kbd.is_none()) { None } else { hw.live }
             };
             // захват звука держим открытым, только пока он нужен
             if src != Some(Source::Music) {
@@ -49,7 +49,11 @@ pub fn run(app: AppHandle) {
                 Some(Source::Music) => {
                     let rms = audio.as_ref().map_or(0.0, |(_, level): &(cpal::Stream, Arc<AtomicU32>)| f32::from_bits(level.swap(0, Relaxed)));
                     let k = env.next(rms);
-                    state.lock().unwrap().paint_live(Source::Music, |z| scale(z.rgb, k));
+                    let mut hw = state.lock().unwrap();
+                    hw.paint_live(Source::Music, |z| scale(z.rgb, k));
+                    if let Some(base) = hw.kbd_base() {
+                        hw.paint_kbd(Source::Music, scale(base, k));
+                    }
                 }
                 Some(Source::Screen) => {
                     let Some(c) = screen_color() else { continue };
@@ -57,7 +61,9 @@ pub fn run(app: AppHandle) {
                         screen[i] += (c[i] as f32 - screen[i]) * 0.3; // сглаживание, чтобы не мерцало на сменах кадра
                     }
                     let c = screen.map(|v| v.round() as u8);
-                    state.lock().unwrap().paint_live(Source::Screen, |_| c);
+                    let mut hw = state.lock().unwrap();
+                    hw.paint_live(Source::Screen, |_| c);
+                    hw.paint_kbd(Source::Screen, c);
                 }
                 None => {}
             }

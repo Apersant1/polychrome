@@ -1,6 +1,7 @@
 mod idle;
 mod live;
 mod protocol;
+mod zet;
 
 use protocol::{Controller, MODE_OFF, MODE_STATIC, ZONES, Zone};
 use serde::{Deserialize, Serialize};
@@ -24,6 +25,14 @@ struct Hw {
     dirty: bool,
     dark: u8, // причины из idle: пока не 0, на железе всё выключено
     live: Option<live::Source>, // пока задан, на железе кадры live, а не зоны пользователя
+    kbd: Option<Kbd>,
+}
+
+/// Клавиатура ZET через службу Blade Pro Software; необязательна — при ошибке связи просто отключаем
+struct Kbd {
+    link: zet::Zet,
+    effect: zet::Effect, // что выбрал пользователь
+    brights_max: u8,     // яркость статичного режима для живых кадров
 }
 
 type Shared = Mutex<Hw>;
@@ -66,12 +75,43 @@ impl Hw {
         Ok(())
     }
 
+    /// Эффект пользователя на клавиатуру или темноту
+    fn show_kbd(&mut self) {
+        let Some(k) = &mut self.kbd else { return };
+        let e = if self.dark != 0 { zet::Effect { mode: zet::MODE_STATIC, palette: vec![0], ..k.effect.clone() } } else { k.effect.clone() };
+        if k.link.set_effect(&e).is_err() {
+            self.kbd = None;
+        }
+    }
+
     fn set_dark(&mut self, reasons: u8) {
         let changed = (self.dark != 0) != (reasons != 0);
         self.dark = reasons;
         if changed && self.ctrl.is_some() {
             let _ = self.show(); // ошибка уже сбросила ctrl, интерфейс увидит её при следующей записи
         }
+        if changed && self.live.is_none() {
+            self.show_kbd();
+        }
+    }
+
+    /// Кадр живого эффекта на клавиатуру — статичным цветом
+    fn paint_kbd(&mut self, src: live::Source, rgb: [u8; 3]) {
+        if self.live != Some(src) || self.dark != 0 {
+            return;
+        }
+        let Some(k) = &mut self.kbd else { return };
+        let e = zet::Effect { mode: zet::MODE_STATIC, brightness: k.brights_max, speed: 0, direction: 0, palette: vec![u32::from_be_bytes([0, rgb[0], rgb[1], rgb[2]])] };
+        if k.link.set_effect(&e).is_err() {
+            self.kbd = None;
+        }
+    }
+
+    /// Свой цвет клавиатуры для «Музыки»; радуга и чёрный — белым
+    fn kbd_base(&self) -> Option<[u8; 3]> {
+        let c = self.kbd.as_ref()?.effect.palette.first().copied().unwrap_or(0);
+        let [flags, r, g, b] = c.to_be_bytes();
+        Some(if flags != 0 || c == 0 { [255; 3] } else { [r, g, b] })
     }
 
     /// Кадр живого эффекта: зоны, которые пользователь не выключил, — статичным цветом
@@ -155,10 +195,54 @@ fn save(hw: State<'_, Shared>) -> Result<(), String> {
 fn set_live(hw: State<'_, Shared>, source: Option<live::Source>) -> Result<(), String> {
     let mut hw = hw.lock().unwrap();
     hw.live = source;
-    if source.is_none() && hw.dark == 0 && hw.ctrl.is_some() {
-        hw.show()?; // вернуть зоны пользователя
+    if source.is_none() && hw.dark == 0 {
+        hw.show_kbd();
+        if hw.ctrl.is_some() {
+            hw.show()?; // вернуть зоны пользователя
+        }
     }
     Ok(())
+}
+
+#[derive(Serialize)]
+struct KbdView {
+    modes: Vec<zet::ModeInfo>,
+    effect: zet::Effect,
+}
+
+/// Подключиться к службе ZET. mode — какой режим считать включённым: служба текущий не сообщает
+#[tauri::command(async)]
+fn kbd_open(hw: State<'_, Shared>, mode: u8) -> Result<KbdView, String> {
+    let mut link = zet::Zet::connect().map_err(|e| format!("Служба ZET недоступна: {e}"))?;
+    let modes = link.modes().map_err(|e| e.to_string())?;
+    let effect = link.effect(mode).map_err(|e| e.to_string())?;
+    let brights_max = modes.iter().find(|m| m.index == zet::MODE_STATIC).map_or(6, |m| m.brights.saturating_sub(1));
+    hw.lock().unwrap().kbd = Some(Kbd { link, effect: effect.clone(), brights_max });
+    Ok(KbdView { modes, effect })
+}
+
+/// Настройки режима, сохранённые в клавиатуре, — чтобы при смене режима показать его ползунки
+#[tauri::command(async)]
+fn kbd_effect(hw: State<'_, Shared>, mode: u8) -> Result<zet::Effect, String> {
+    let mut guard = hw.lock().unwrap();
+    let hw = &mut *guard;
+    let Some(k) = &mut hw.kbd else { return Err("Клавиатура не подключена".into()) };
+    k.link.effect(mode).map_err(|e| {
+        hw.kbd = None;
+        format!("Связь со службой ZET потеряна: {e}")
+    })
+}
+
+#[tauri::command(async)]
+fn kbd_set(hw: State<'_, Shared>, effect: zet::Effect) -> Result<(), String> {
+    let mut guard = hw.lock().unwrap();
+    let hw = &mut *guard;
+    let Some(k) = &mut hw.kbd else { return Err("Клавиатура не подключена".into()) };
+    k.effect = effect;
+    if hw.dark == 0 && hw.live.is_none() {
+        hw.show_kbd();
+    }
+    hw.kbd.as_ref().map(|_| ()).ok_or_else(|| "Связь со службой ZET потеряна".into())
 }
 
 #[tauri::command]
@@ -282,7 +366,12 @@ fn apply_profile(name: &str) -> Result<(), String> {
         z.set(l.mode, l.dim(l.color), l.speed, l.palette.iter().map(|&p| l.dim(p)).collect());
         c.write_zone(id, &z).map_err(hid)?;
     }
-    c.save().map_err(hid)
+    c.save().map_err(hid)?;
+    if let Some(k) = profile.get("kbd").filter(|k| !k.is_null()) {
+        let e = zet::Effect::deserialize(k).map_err(|e| format!("Профиль «{name}», клавиатура: {e}"))?;
+        zet::Zet::connect().and_then(|mut z| z.set_effect(&e)).map_err(|e| format!("Клавиатура ZET: {e}"))?;
+    }
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -352,7 +441,7 @@ pub fn run() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![connect, write_zone, save, system_info, load_config, save_config, open_config_dir, get_autostart, set_autostart, set_live])
+        .invoke_handler(tauri::generate_handler![connect, write_zone, save, system_info, load_config, save_config, open_config_dir, get_autostart, set_autostart, set_live, kbd_open, kbd_effect, kbd_set])
         .on_window_event(|window, event| {
             // крестик прячет в трей, выход — через меню трея
             if let WindowEvent::CloseRequested { api, .. } = event {

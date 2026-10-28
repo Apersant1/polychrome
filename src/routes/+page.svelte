@@ -7,7 +7,7 @@
   import Square from '@lucide/svelte/icons/square';
   import X from '@lucide/svelte/icons/x';
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
-  import { app, connect, loadConfig, loadSystem, nextProfile, togglePower, useProfile } from '$lib/app.svelte';
+  import { app, connect, loadConfig, loadSystem, nextProfile, openKbd, togglePower, useProfile } from '$lib/app.svelte';
   import Sidebar from '$lib/Sidebar.svelte';
   import DeviceTree from '$lib/DeviceTree.svelte';
   import Preview from '$lib/Preview.svelte';
@@ -17,6 +17,7 @@
   import Profiles from '$lib/Profiles.svelte';
   import DevicesPage from '$lib/DevicesPage.svelte';
   import SettingsPage from '$lib/SettingsPage.svelte';
+  import KbdPanel from '$lib/KbdPanel.svelte';
 
   const win = getCurrentWindow();
   const TITLES = {
@@ -28,7 +29,7 @@
   };
 
   onMount(() => {
-    loadConfig();
+    loadConfig().then(openKbd); // режим клавиатуры, который считать включённым, лежит в конфиге
     connect();
     loadSystem();
     let frame = requestAnimationFrame(function tick(ms) {
@@ -76,9 +77,14 @@
       <div class="home">
         <div class="tree"><DeviceTree /></div>
         <div class="view"><Preview /></div>
-        <div class="color"><ColorPanel /></div>
-        <div class="fx"><Effects /></div>
-        <div class="targets"><ApplyPanel /></div>
+        {#if app.selected === 'kbd' && app.kbd}
+          <div class="kbdpanel"><KbdPanel /></div>
+          <div class="fx"><Effects /></div>
+        {:else}
+          <div class="color"><ColorPanel /></div>
+          <div class="fx"><Effects /></div>
+          <div class="targets"><ApplyPanel /></div>
+        {/if}
         <div class="prof"><Profiles /></div>
       </div>
     {:else if app.page === 'effects'}
@@ -135,5 +141,6 @@
   .fx { grid-area: fx; }
   .targets { grid-area: targets; }
   .prof { grid-area: prof; }
+  .kbdpanel { grid-column: 3; grid-row: 1 / 3; }
   .split { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 14px; min-height: 0; align-items: start; }
 </style>

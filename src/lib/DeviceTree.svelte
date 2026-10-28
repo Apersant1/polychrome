@@ -4,6 +4,7 @@
   import Fan from '@lucide/svelte/icons/fan';
   import MemoryStick from '@lucide/svelte/icons/memory-stick';
   import Gpu from '@lucide/svelte/icons/gpu';
+  import Keyboard from '@lucide/svelte/icons/keyboard';
   import { app, select, placeholders, setPower, zoneLabel, FANS_ZONE, type Zone } from './app.svelte';
   import { css, actual, MODE_OFF } from './leds';
 
@@ -54,6 +55,11 @@
     </li>
   {/each}
 {/snippet}
+{#snippet kbdRows()}
+  <li class:selected={app.selected === 'kbd'}>
+    <button onclick={() => select('kbd')}><i style:background="#5aa0ff"></i>ZET Blade Pro</button>
+  </li>
+{/snippet}
 {#snippet gpuRows()}
   {#each extra.gpu as d (d.key)}
     <li class="stub" class:selected={app.selected === d.key}>
@@ -66,6 +72,7 @@
   <h3>Устройства</h3>
   {@render group('board', app.sys.board?.Product ?? 'Материнская плата', CircuitBoard, boardRows)}
   {#if fans.length}{@render group('fans', 'Охлаждение', Fan, fanRows)}{/if}
+  {#if app.kbd}{@render group('kbd', 'Клавиатура', Keyboard, kbdRows)}{/if}
   {#if extra.ram.length}{@render group('ram', 'Память', MemoryStick, ramRows)}{/if}
   {#if extra.gpu.length}{@render group('gpu', 'Видеокарта', Gpu, gpuRows)}{/if}
 </div>

@@ -2,7 +2,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { actual, split, MODE_OFF, MODE_STATIC, type Look, type RGB } from './leds';
 
 export type Zone = Look & { id: number; name: string };
-export type Profile = { name: string; zones: Record<string, Look> }; // ключ — номер зоны или '*' для всех
+export type Profile = { name: string; zones: Record<string, Look>; kbd?: KbdEffect }; // ключ — номер зоны или '*' для всех
+/** Клавиатура ZET (zet.rs): режим 1 статичный … 13 своя раскраска; цвет 0xRRGGBB, бит 24 — радуга */
+export type KbdEffect = { mode: number; brightness: number; speed: number; direction: number; palette: number[] };
+export type KbdMode = { index: number; speeds: number; brights: number; dirs: number; colors: number };
 export type Live = 'music' | 'screen';
 export type Page = 'home' | 'devices' | 'effects' | 'profiles' | 'settings';
 export type SysInfo = {
@@ -33,6 +36,8 @@ export const app = $state({
   profiles: [] as Profile[],
   names: {} as Record<string, string>, // свои имена зон по номеру
   live: null as Live | null, // живой эффект поверх всех зон (live.rs)
+  kbd: null as { modes: KbdMode[]; effect: KbdEffect } | null, // null — нет службы Blade Pro Software
+  kbdFollow: false, // статичный цвет клавиатуры повторяет правки зон
   profile: '',
   now: 0, // секунды, общий такт анимаций
 });
@@ -100,6 +105,7 @@ export function change(patch: Partial<Look>) {
   if (!zone) return;
   Object.assign(zone, look(app.edit));
   push(zone);
+  if (app.kbdFollow) followBoard(app.edit);
 }
 
 export function setLooks(byZone: (zone: Zone) => Look | undefined) {
@@ -154,10 +160,12 @@ let persist = true; // файл не прочитался — не затира�
 
 export async function loadConfig() {
   try {
-    const cfg = await invoke<{ profiles: Profile[]; names?: Record<string, string> } | null>('load_config');
+    const cfg = await invoke<{ profiles: Profile[]; names?: Record<string, string>; kbdFollow?: boolean; kbdMode?: number } | null>('load_config');
     if (cfg) {
       app.profiles = cfg.profiles;
       app.names = cfg.names ?? {};
+      app.kbdFollow = cfg.kbdFollow ?? false;
+      kbdMode = cfg.kbdMode ?? KBD_STATIC;
       return;
     }
     try {
@@ -176,7 +184,8 @@ export async function loadConfig() {
 
 function storeConfig() {
   if (!persist) return;
-  invoke('save_config', { config: $state.snapshot({ profiles: app.profiles, names: app.names }) }).catch((e) => alert(e));
+  const config = { profiles: app.profiles, names: app.names, kbdFollow: app.kbdFollow, kbdMode };
+  invoke('save_config', { config: $state.snapshot(config) }).catch((e) => alert(e));
 }
 
 /** Пустое имя — вернуть стандартное */
@@ -194,11 +203,14 @@ export function useProfile(name: string) {
   if (!p) return;
   app.profile = name;
   setLooks((zone) => profileLook(p, zone.id));
+  if (p.kbd) kbdSet(p.kbd);
   return apply();
 }
 
-/** Зоны ушли от того, что записано в профиле */
-export const profileChanged = (p: Profile) => app.zones.some((z) => { const l = profileLook(p, z.id); return l && !same(z, l); });
+/** Зоны или клавиатура ушли от того, что записано в профиле */
+export const profileChanged = (p: Profile) =>
+  app.zones.some((z) => { const l = profileLook(p, z.id); return l && !same(z, l); }) ||
+  (!!p.kbd && !!app.kbd && JSON.stringify(p.kbd) !== JSON.stringify(app.kbd.effect));
 
 export const profileExists = (name: string) => app.profiles.some((p) => p.name === name);
 
@@ -206,8 +218,9 @@ export const profileExists = (name: string) => app.profiles.some((p) => p.name =
 export function saveProfile(name: string) {
   const zones = Object.fromEntries(app.zones.map((z) => [z.id, look(z)]));
   const i = app.profiles.findIndex((p) => p.name === name);
-  if (i < 0) app.profiles.push({ name, zones });
-  else app.profiles[i].zones = zones;
+  const kbd = app.kbd ? ($state.snapshot(app.kbd.effect) as KbdEffect) : app.profiles[i]?.kbd;
+  if (i < 0) app.profiles.push({ name, zones, kbd });
+  else Object.assign(app.profiles[i], { zones, kbd });
   app.profile = name;
   storeConfig();
 }
@@ -245,6 +258,70 @@ export async function toggleLive(src: Live) {
   } catch (e) {
     fail(e);
   }
+}
+
+const KBD_STATIC = 1;
+let kbdMode = KBD_STATIC; // служба не сообщает включённый режим — помним последний выбранный здесь
+
+/** Клавиатура ZET — только если стоит Blade Pro Software со своей службой */
+export async function openKbd() {
+  try {
+    app.kbd = await invoke('kbd_open', { mode: kbdMode });
+  } catch {
+    app.kbd = null;
+  }
+}
+
+// Как push() для зон: при перетаскивании цвета уходит только последнее значение
+let kbdPending: KbdEffect | null = null;
+let kbdBusy = false;
+
+export async function kbdSet(effect: KbdEffect) {
+  if (!app.kbd) return;
+  app.kbd.effect = effect;
+  if (effect.mode !== kbdMode) {
+    kbdMode = effect.mode;
+    storeConfig();
+  }
+  kbdPending = $state.snapshot(effect) as KbdEffect;
+  if (kbdBusy) return;
+  kbdBusy = true;
+  while (kbdPending) {
+    const e = kbdPending;
+    kbdPending = null;
+    try {
+      await invoke('kbd_set', { effect: e });
+    } catch {
+      app.kbd = null; // служба пропала — панель клавиатуры скроется
+      kbdPending = null;
+    }
+  }
+  kbdBusy = false;
+}
+
+/** Сменить режим: ползунки и цвета берём те, что клавиатура помнит для этого режима */
+export async function kbdSetMode(mode: number) {
+  try {
+    await kbdSet(await invoke<KbdEffect>('kbd_effect', { mode }));
+  } catch {
+    app.kbd = null;
+  }
+}
+
+export function setKbdFollow(on: boolean) {
+  app.kbdFollow = on;
+  storeConfig();
+  if (on) followBoard(app.edit);
+}
+
+export const rgbToInt = ([r, g, b]: RGB) => (r << 16) | (g << 8) | b;
+
+/** «Цвет как у платы»: статичный режим цветом зоны; выключенная зона — чёрным */
+function followBoard(l: Look) {
+  const m = app.kbd?.modes.find((m) => m.index === KBD_STATIC);
+  if (!m) return;
+  const color = l.mode === MODE_OFF ? 0 : rgbToInt(actual(l).rgb);
+  kbdSet({ mode: KBD_STATIC, brightness: m.brights - 1, speed: 0, direction: 0, palette: [color] });
 }
 
 /** Ctrl+Alt+L: погасить всё, а если всё погашено — включить */
