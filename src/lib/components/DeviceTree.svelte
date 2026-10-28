@@ -1,19 +1,26 @@
 <script lang="ts">
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import CircuitBoard from '@lucide/svelte/icons/circuit-board';
-  import Fan from '@lucide/svelte/icons/fan';
   import MemoryStick from '@lucide/svelte/icons/memory-stick';
   import Gpu from '@lucide/svelte/icons/gpu';
   import Keyboard from '@lucide/svelte/icons/keyboard';
+  import Pencil from '@lucide/svelte/icons/pencil';
   import { app, type Zone } from '$lib/state/app.svelte';
-  import { select, setPower, zoneLabel, FANS_ZONE } from '$lib/state/board.svelte';
+  import { select, setPower, zoneLabel, defaultLabel } from '$lib/state/board.svelte';
+  import { renameZone } from '$lib/state/config.svelte';
   import { placeholders } from '$lib/state/system.svelte';
   import { css, actual, MODE_OFF } from '$lib/leds';
 
   const extra = $derived(placeholders());
-  const board = $derived(app.zones.filter((z) => z.id !== FANS_ZONE));
-  const fans = $derived(app.zones.filter((z) => z.id === FANS_ZONE));
   let closed = $state<Record<string, boolean>>({});
+  let editing = $state<number>(); // зона, которую переименовываем
+
+  /** Enter/blur — сохранить (пустое имя вернёт стандартное), Esc — отменить */
+  function finish(id: number, value: string | null) {
+    if (editing !== id) return;
+    editing = undefined;
+    if (value !== null) renameZone(id, value);
+  }
 
   const lit = $derived(app.zones.filter((z) => z.mode !== MODE_OFF).length);
 
@@ -22,9 +29,29 @@
 
 {#snippet zoneRow(z: Zone)}
   <li class:selected={app.selected === `zone:${z.id}`} class:off={z.mode === MODE_OFF}>
-    <button onclick={() => select(`zone:${z.id}`)}>
-      <i style:background={dot(z)} style:box-shadow="0 0 8px {dot(z)}"></i>{zoneLabel(z)}
-    </button>
+    {#if editing === z.id}
+      <i style:background={dot(z)}></i>
+      <!-- svelte-ignore a11y_autofocus -->
+      <input
+        class="name"
+        aria-label="Имя зоны"
+        placeholder={defaultLabel(z)}
+        value={app.names[z.id] ?? zoneLabel(z)}
+        autofocus
+        onfocus={(e) => e.currentTarget.select()}
+        onkeydown={(e) => (e.key === 'Enter' ? finish(z.id, e.currentTarget.value) : e.key === 'Escape' && finish(z.id, null))}
+        onblur={(e) => finish(z.id, e.currentTarget.value)}
+      />
+    {:else}
+      <button
+        onclick={() => select(`zone:${z.id}`)}
+        ondblclick={() => (editing = z.id)}
+        onkeydown={(e) => e.key === 'F2' && (editing = z.id)}
+      >
+        <i style:background={dot(z)} style:box-shadow="0 0 8px {dot(z)}"></i>{zoneLabel(z)}
+      </button>
+      <button class="rename" aria-label="Переименовать {zoneLabel(z)}" onclick={() => (editing = z.id)}><Pencil size={13} /></button>
+    {/if}
     <input
       type="checkbox"
       role="switch"
@@ -36,7 +63,7 @@
   </li>
 {/snippet}
 
-{#snippet group(id: string, title: string, Icon: typeof Fan, body: import('svelte').Snippet)}
+{#snippet group(id: string, title: string, Icon: typeof CircuitBoard, body: import('svelte').Snippet)}
   <section>
     <button class="head" onclick={() => (closed[id] = !closed[id])}>
       <span class="chev" class:closed={closed[id]}><ChevronDown size={14} /></span>
@@ -47,10 +74,7 @@
 {/snippet}
 
 {#snippet boardRows()}
-  {#each board as z (z.id)}{@render zoneRow(z)}{/each}
-{/snippet}
-{#snippet fanRows()}
-  {#each fans as z (z.id)}{@render zoneRow(z)}{/each}
+  {#each app.zones as z (z.id)}{@render zoneRow(z)}{/each}
 {/snippet}
 {#snippet ramRows()}
   {#each extra.ram as d (d.key)}
@@ -88,7 +112,6 @@
     />
   </h3>
   {@render group('board', app.sys.board?.Product ?? 'Материнская плата', CircuitBoard, boardRows)}
-  {#if fans.length}{@render group('fans', 'Охлаждение', Fan, fanRows)}{/if}
   {#if app.kbd}{@render group('kbd', 'Клавиатура', Keyboard, kbdRows)}{/if}
   {#if extra.ram.length}{@render group('ram', 'Память', MemoryStick, ramRows)}{/if}
   {#if extra.gpu.length}{@render group('gpu', 'Видеокарта', Gpu, gpuRows)}{/if}
@@ -131,4 +154,9 @@
   }
   li.stub button, li.off button { color: var(--dim); }
   i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  /* карандаш виден при наведении на строку или фокусе с клавиатуры */
+  li button.rename { flex: none; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border-radius: 6px; color: var(--dim); opacity: 0; }
+  li:hover button.rename, li button.rename:focus-visible { opacity: 1; }
+  li button.rename:hover { color: var(--text); background: rgba(255, 255, 255, 0.08); }
+  .name { flex: 1; min-width: 0; margin: 3px 0; padding: 4px 6px; border: 1px solid var(--accent); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; font-size: 13px; outline: none; }
 </style>

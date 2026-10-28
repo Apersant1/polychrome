@@ -8,6 +8,8 @@ import { MODE_STATIC, type Look } from '$lib/leds';
 export type Zone = Look & { id: number; name: string };
 export type Profile = { name: string; zones: Record<string, Look>; kbd?: KbdEffect }; // ключ — номер зоны или '*' для всех
 export type Page = 'home' | 'devices' | 'effects' | 'profiles' | 'settings';
+/** Чем светится деталь на картинке компьютера: номер зоны, null — без подсветки, 'hidden' — такой детали нет */
+export type PartZone = number | null | 'hidden';
 
 export const KBD_STATIC = 1;
 
@@ -23,6 +25,8 @@ export const app = $state({
   profiles: [] as Profile[],
   profile: '',
   names: {} as Record<string, string>, // свои имена зон по номеру
+  scene: {} as Record<string, PartZone>, // детали картинки компьютера, которые пользователь перенастроил (Preview.svelte)
+  fanCounts: {} as Record<string, number>, // сколько вентиляторов в группе на картинке, если не 3
   live: null as Live | null, // живой эффект поверх всех устройств (live.rs)
   kbd: null as KbdView | null, // null — клавиатуры нет или её держит Blade Pro Software
   kbdFollow: false, // статичный цвет клавиатуры повторяет правки зон

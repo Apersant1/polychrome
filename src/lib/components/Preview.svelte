@@ -1,21 +1,60 @@
 <script lang="ts">
-  import { app } from '$lib/state/app.svelte';
-  import { FANS_ZONE } from '$lib/state/board.svelte';
+  import Pencil from '@lucide/svelte/icons/pencil';
+  import Check from '@lucide/svelte/icons/check';
+  import { app, type PartZone } from '$lib/state/app.svelte';
+  import { FANS_ZONE, select, zoneLabel } from '$lib/state/board.svelte';
+  import { setFanCount, setPartZone } from '$lib/state/config.svelte';
   import { placeholders } from '$lib/state/system.svelte';
   import { led, css, mix, type Look, type RGB } from '$lib/leds';
 
   // Сцена 800×560, растягивается по месту с сохранением пропорций
   const W = 800, H = 560;
-  // Куда на картинке выведены зоны контроллера (кроме кулеров): отрезки лент [x0, y0, x1, y1]
-  const STRIPS: Record<number, [number, number, number, number][]> = {
-    0: [[44, 50, 44, 470]],
-    1: [[70, 28, 740, 28]],
-    3: [[50, 490, 750, 490]],
-    4: [[758, 70, 758, 470]],
-    5: [[182, 112, 182, 196], [182, 112, 236, 112]],
-    6: [[490, 106, 574, 106], [574, 106, 574, 170]], // уголок платы справа сверху
-    // 7 — разъём ARGB #3, на картинке ленты к нему нет
+  type Part = { label: string; box: [x: number, y: number, w: number, h: number]; zone: PartZone; strips?: [number, number, number, number][] };
+  // Детали картинки: где лежат (для наведения и клика) и какой зоной светятся по умолчанию — как на B760M Pro RS/D4.
+  // Пользователь перепривязывает их в режиме «Настроить» (app.scene); у лент — отрезки [x0, y0, x1, y1].
+  const PARTS: Record<string, Part> = {
+    left: { label: 'Лента слева', box: [34, 44, 20, 432], zone: 0, strips: [[44, 50, 44, 470]] },
+    top: { label: 'Лента сверху', box: [64, 18, 682, 18], zone: 1, strips: [[70, 28, 740, 28]] },
+    bottom: { label: 'Лента снизу', box: [44, 481, 712, 18], zone: 3, strips: [[50, 490, 750, 490]] },
+    right: { label: 'Лента справа', box: [749, 64, 18, 412], zone: 4, strips: [[758, 70, 758, 470]] },
+    io: { label: 'Кожух I/O', box: [174, 104, 70, 100], zone: 5, strips: [[182, 112, 182, 196], [182, 112, 236, 112]] },
+    corner: { label: 'Уголок платы', box: [482, 98, 100, 80], zone: 6, strips: [[490, 106, 574, 106], [574, 106, 574, 170]] },
+    topFans: { label: 'Верхние вентиляторы', box: [172, 36, 446, 34], zone: FANS_ZONE }, // рамки групп — по fanSpots
+    frontFans: { label: 'Передние вентиляторы', box: [614, 84, 132, 412], zone: FANS_ZONE },
+    rearFan: { label: 'Задний вентилятор', box: [57, 102, 96, 96], zone: FANS_ZONE },
+    cpu: { label: 'Кулер процессора', box: [268, 148, 104, 104], zone: null },
   };
+
+  // Группы вентиляторов: 1–3 штуки по центру своего места (сверху шаг 150 по x, спереди 140 по y)
+  const GROUPS: Record<string, { center: number; step: number }> = { topFans: { center: 395, step: 150 }, frontFans: { center: 290, step: 140 } };
+  const fanSpots = (name: string) => {
+    const n = app.fanCounts[name] ?? 3;
+    const { center, step } = GROUPS[name];
+    return Array.from({ length: n }, (_, i) => center + (i - (n - 1) / 2) * step);
+  };
+  function boxOf(name: string): Part['box'] {
+    if (!(name in GROUPS)) return PARTS[name].box;
+    const spots = fanSpots(name);
+    return name === 'topFans' ? [spots[0] - 72, 36, spots.at(-1)! - spots[0] + 144, 34] : [614, spots[0] - 64, 132, spots.at(-1)! - spots[0] + 128];
+  }
+
+  const partZone = (name: string): PartZone => (name in app.scene ? app.scene[name] : PARTS[name].zone);
+  const zoneById = (id: number) => app.zones.find((z) => z.id === id);
+  const partLook = (name: string) => {
+    const z = partZone(name);
+    return typeof z === 'number' ? zoneById(z) : undefined;
+  };
+  function zoneText(z: PartZone) {
+    if (z === 'hidden') return 'нет на моём ПК';
+    if (z === null) return 'без подсветки';
+    const zone = zoneById(z);
+    return zone ? zoneLabel(zone) : `зона ${z}`;
+  }
+
+  let editing = $state(false); // режим «Настроить»: клик по детали выбирает её зону
+  let hover = $state<string | null>(null);
+  let menu = $state<{ part: string; x: number; y: number } | null>(null);
+  let view = { k: 1, ox: 0, oy: 0, dpr: 1 }; // как сцена легла на холст — для перевода координат мыши
 
   let host: HTMLDivElement;
   let canvas: HTMLCanvasElement;
@@ -105,9 +144,6 @@
   }
 
   function scene(c: CanvasRenderingContext2D, g: CanvasRenderingContext2D, t: number) {
-    const zone = (id: number) => app.zones.find((z) => z.id === id);
-    const fans = zone(FANS_ZONE);
-
     // корпус и стекло
     const body = c.createLinearGradient(0, 0, W, H);
     body.addColorStop(0, '#0e131c');
@@ -120,12 +156,6 @@
     // материнская плата, процессорный кулер, память, видеокарта — без подсветки
     roundRect(c, 170, 100, 410, 300, 6, '#0f151e', '#212b3a');
     for (let i = 0; i < 6; i++) roundRect(c, 196 + i * 12, 240, 4, 130, 2, '#151c27');
-    roundRect(c, 268, 148, 104, 104, 10, '#121821', '#263041');
-    c.beginPath();
-    c.arc(320, 200, 38, 0, Math.PI * 2);
-    c.strokeStyle = '#273142';
-    c.lineWidth = 6;
-    c.stroke();
     for (let i = 0; i < 4; i++) {
       roundRect(c, 420 + i * 22, 132, 12, 160, 3, '#171e29', '#232d3d');
       roundRect(c, 420 + i * 22, 132, 12, 10, 3, '#2a3343');
@@ -135,17 +165,78 @@
     c.font = '600 17px "Segoe UI Variable Text", "Segoe UI", sans-serif';
     c.fillText((app.sys.gpu?.[0]?.Name ?? 'GPU').toUpperCase(), 186, 453);
 
-    // зоны контроллера
-    for (const [id, segs] of Object.entries(STRIPS)) {
-      const z = zone(+id);
-      if (z && z.mode) for (const s of segs) strip(g, s, z, t);
+    // детали с подсветкой
+    for (const name of Object.keys(PARTS)) {
+      const l = partLook(name);
+      for (const seg of PARTS[name].strips ?? []) if (l?.mode) strip(g, seg, l, t);
     }
-    for (const x of [245, 395, 545]) {
-      roundRect(c, x - 70, 36, 140, 32, 8, '#0f141c', '#222c3b');
-      if (fans && fans.mode) ring(g, x, 52, 58, 10, 5, fans, t);
+    const shown = (name: string) => partZone(name) !== 'hidden';
+    if (shown('cpu')) {
+      const l = partLook('cpu');
+      roundRect(c, 268, 148, 104, 104, 10, '#121821', '#263041');
+      if (l?.mode) ring(g, 320, 200, 38, 38, 6, l, t);
+      else {
+        c.beginPath();
+        c.arc(320, 200, 38, 0, Math.PI * 2);
+        c.strokeStyle = '#273142';
+        c.lineWidth = 6;
+        c.stroke();
+      }
     }
-    for (const y of [150, 290, 430]) fan(c, g, 680, y, 58, fans, t);
-    fan(c, g, 105, 150, 44, fans, t);
+    if (shown('topFans')) {
+      const l = partLook('topFans');
+      for (const x of fanSpots('topFans')) {
+        roundRect(c, x - 70, 36, 140, 32, 8, '#0f141c', '#222c3b');
+        if (l?.mode) ring(g, x, 52, 58, 10, 5, l, t);
+      }
+    }
+    if (shown('frontFans')) for (const y of fanSpots('frontFans')) fan(c, g, 680, y, 58, partLook('frontFans'), t);
+    if (shown('rearFan')) fan(c, g, 105, 150, 44, partLook('rearFan'), t);
+  }
+
+  /** Рамки: детали выбранной зоны, деталь под мышью, в режиме «Настроить» — все */
+  function outlines(c: CanvasRenderingContext2D) {
+    for (const name of Object.keys(PARTS)) {
+      const box = boxOf(name);
+      const z = partZone(name);
+      const picked = typeof z === 'number' && app.selected === `zone:${z}`;
+      if (!editing && !picked && hover !== name) continue;
+      c.beginPath();
+      c.roundRect(box[0] - 5, box[1] - 5, box[2] + 10, box[3] + 10, 8);
+      c.setLineDash(editing && hover !== name ? [6, 5] : []);
+      c.lineWidth = 2;
+      c.strokeStyle = hover === name ? 'rgba(255,255,255,0.75)' : picked ? '#2f7cf6' : 'rgba(90,160,255,0.45)';
+      c.stroke();
+    }
+    c.setLineDash([]);
+  }
+
+  /** Деталь под указателем; вне «Настроить» — только та, что светится какой-то зоной */
+  function partAt(e: MouseEvent) {
+    const r = canvas.getBoundingClientRect();
+    const x = ((e.clientX - r.left) * view.dpr - view.ox) / view.k;
+    const y = ((e.clientY - r.top) * view.dpr - view.oy) / view.k;
+    const name = Object.keys(PARTS).find((name) => {
+      const [bx, by, bw, bh] = boxOf(name);
+      return x >= bx - 5 && x <= bx + bw + 5 && y >= by - 5 && y <= by + bh + 5 && (editing || typeof partZone(name) === 'number');
+    });
+    return name ?? null;
+  }
+
+  function click(e: MouseEvent) {
+    const name = partAt(e);
+    menu = null;
+    if (!name) return;
+    if (!editing) return select(`zone:${partZone(name)}`);
+    // меню выбора зоны у курсора, но не за краем картинки
+    const r = host.getBoundingClientRect();
+    const height = (app.zones.length + 3) * 34 + (name in GROUPS ? 44 : 0) + 16;
+    menu = { part: name, x: Math.min(e.clientX - r.left, r.width - 230), y: Math.max(8, Math.min(e.clientY - r.top, r.height - height)) };
+  }
+
+  function pick(z: PartZone) {
+    if (menu) setPartZone(menu.part, z);
+    menu = null;
   }
 
   $effect(() => {
@@ -160,10 +251,11 @@
     const c = canvas.getContext('2d')!;
     const g = glow.getContext('2d')!;
     const k = Math.min(pw / W, ph / H);
+    view = { k, ox: (pw - W * k) / 2, oy: (ph - H * k) / 2, dpr };
     for (const ctx of [c, g]) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, pw, ph);
-      ctx.setTransform(k, 0, 0, k, (pw - W * k) / 2, (ph - H * k) / 2);
+      ctx.setTransform(k, 0, 0, k, view.ox, view.oy);
     }
     scene(c, g, t);
     // свечение: размытый слой светодиодов под чётким
@@ -174,11 +266,53 @@
     c.filter = 'none';
     c.globalCompositeOperation = 'source-over';
     c.drawImage(glow, 0, 0);
+    c.setTransform(k, 0, 0, k, view.ox, view.oy);
+    outlines(c);
   });
 </script>
 
 <div class="preview" bind:this={host}>
-  <canvas bind:this={canvas}></canvas>
+  <!-- клик по детали дублирует выбор зоны в дереве слева, поэтому без отдельного доступа с клавиатуры -->
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+  <canvas
+    bind:this={canvas}
+    class:pointer={hover}
+    onpointermove={(e) => (hover = partAt(e))}
+    onpointerleave={() => (hover = null)}
+    onclick={click}
+  ></canvas>
+
+  <button class="edit" class:on={editing} onclick={() => ([editing, menu] = [!editing, null])}>
+    {#if editing}<Check size={14} />Готово{:else}<Pencil size={14} />Настроить{/if}
+  </button>
+
+  {#if menu}
+    {@const current = partZone(menu.part)}
+    <div class="menu" style:left="{menu.x}px" style:top="{menu.y}px" role="menu">
+      <b>{PARTS[menu.part].label}</b>
+      {#if menu.part in GROUPS}
+        {@const count = fanSpots(menu.part).length}
+        <div class="count" role="group" aria-label="Сколько вентиляторов">
+          <span>Вентиляторов</span>
+          {#each [1, 2, 3] as n (n)}
+            <button class:on={count === n} aria-pressed={count === n} onclick={() => setFanCount(menu!.part, n)}>{n}</button>
+          {/each}
+        </div>
+      {/if}
+      {#each app.zones as z (z.id)}
+        <button role="menuitemradio" aria-checked={current === z.id} onclick={() => pick(z.id)}>{zoneLabel(z)}{#if current === z.id}<Check size={14} />{/if}</button>
+      {/each}
+      <hr />
+      <button role="menuitemradio" aria-checked={current === null} onclick={() => pick(null)}>Без подсветки{#if current === null}<Check size={14} />{/if}</button>
+      <button role="menuitemradio" aria-checked={current === 'hidden'} onclick={() => pick('hidden')}>Нет на моём ПК{#if current === 'hidden'}<Check size={14} />{/if}</button>
+    </div>
+  {/if}
+
+  {#if !info && (editing || hover)}
+    <p class="hint">
+      {#if hover}<b>{PARTS[hover].label}</b> · {zoneText(partZone(hover))}{:else}Нажмите на деталь и выберите, какой зоной она светится{/if}
+    </p>
+  {/if}
   {#if info}
     <div class="info">
       <b>{info.name}</b>
@@ -200,6 +334,70 @@
     overflow: hidden;
   }
   canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  canvas.pointer { cursor: pointer; }
+  .edit {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: rgba(14, 20, 30, 0.85);
+    color: var(--dim);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .edit:hover, .edit.on { color: var(--text); }
+  .edit.on { border-color: var(--accent); }
+  .hint {
+    position: absolute;
+    left: 16px;
+    bottom: 14px;
+    margin: 0;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: rgba(14, 20, 30, 0.85);
+    color: var(--dim);
+    font-size: 12px;
+    pointer-events: none;
+  }
+  .hint b { color: var(--text); font-weight: 500; }
+  .menu {
+    position: absolute;
+    z-index: 2;
+    width: 220px;
+    padding: 4px;
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    background: var(--card-hover);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  }
+  .menu b { display: block; padding: 6px 10px 4px; color: var(--dim); font-size: 12px; font-weight: 500; }
+  .menu button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 7px 10px;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+  }
+  .menu button:hover, .menu button:focus-visible { background: rgba(255, 255, 255, 0.08); }
+  .menu :global(svg) { color: var(--accent); }
+  hr { margin: 4px 6px; border: 0; border-top: 1px solid var(--border); }
+  .count { display: flex; align-items: center; gap: 4px; padding: 2px 6px 6px; }
+  .menu .count button { justify-content: center; width: 32px; padding: 5px 0; border: 1px solid var(--border-strong); }
+  .menu .count button.on { border-color: var(--accent); background: var(--accent-soft); }
+  .count span { flex: 1; padding-left: 4px; color: var(--dim); font-size: 12px; }
   .info {
     position: absolute;
     left: 16px;

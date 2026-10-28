@@ -2,9 +2,9 @@
 
 import { api } from '$lib/api';
 import type { Look } from '$lib/leds';
-import { app, KBD_STATIC, type Profile } from './app.svelte';
+import { app, KBD_STATIC, type PartZone, type Profile } from './app.svelte';
 
-type Config = { profiles: Profile[]; names?: Record<string, string>; kbdFollow?: boolean; kbdMode?: number };
+type Config = { profiles: Profile[]; names?: Record<string, string>; scene?: Record<string, PartZone>; fanCounts?: Record<string, number>; kbdFollow?: boolean; kbdMode?: number };
 
 const OLD_KEY = 'polychrome.profiles'; // раньше профили лежали в localStorage окна
 const preset = (name: string, l: Look): Profile => ({ name, zones: { '*': l } });
@@ -23,6 +23,8 @@ export async function loadConfig() {
     if (cfg) {
       app.profiles = cfg.profiles;
       app.names = cfg.names ?? {};
+      app.scene = cfg.scene ?? {};
+      app.fanCounts = cfg.fanCounts ?? {};
       app.kbdFollow = cfg.kbdFollow ?? false;
       app.kbdMode = cfg.kbdMode ?? KBD_STATIC;
       return;
@@ -45,8 +47,18 @@ let saving: Promise<unknown> = Promise.resolve();
 
 export function storeConfig() {
   if (!persist) return;
-  const config: Config = $state.snapshot({ profiles: app.profiles, names: app.names, kbdFollow: app.kbdFollow, kbdMode: app.kbdMode });
+  const config: Config = $state.snapshot({ profiles: app.profiles, names: app.names, scene: app.scene, fanCounts: app.fanCounts, kbdFollow: app.kbdFollow, kbdMode: app.kbdMode });
   saving = saving.then(() => api.saveConfig(config)).catch((e) => alert(e));
+}
+
+export function setPartZone(part: string, zone: PartZone) {
+  app.scene[part] = zone;
+  storeConfig();
+}
+
+export function setFanCount(part: string, count: number) {
+  app.fanCounts[part] = count;
+  storeConfig();
 }
 
 /** Пустое имя — вернуть стандартное */
