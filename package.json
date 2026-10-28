@@ -11,7 +11,7 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "tauri",
-    "release": "tauri build --no-bundle && node -e \"const fs=require('fs');fs.copyFileSync('src-tauri/target/release/polychrome.exe','Polychrome.exe');fs.rmSync('src-tauri/target',{recursive:true,force:true})\""
+    "release": "tauri build --no-bundle && node -e \"const fs=require('fs');fs.copyFileSync('src-tauri/target/release/polychrome.exe','Polychrome.exe');\""
   },
   "license": "MIT",
   "dependencies": {

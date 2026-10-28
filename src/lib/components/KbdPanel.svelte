@@ -1,9 +1,7 @@
 <script lang="ts">
   import { app } from '$lib/state/app.svelte';
-  import { kbdSet, kbdSetMode, setKbdFollow } from '$lib/state/keyboard.svelte';
+  import { kbdSet, setKbdFollow, KBD_NAMES } from '$lib/state/keyboard.svelte';
 
-  // Номера режимов клавиатуры → KB_MODE_* из прошивки Whiftec (kb_def.py)
-  const NAMES = ['', 'Статичный', 'Дыхание', 'Поток', 'Дождь', 'Бегущий огонь', 'Звёзды', 'Реакция на нажатие', 'Капли', 'Крест', 'Рябь', 'Аврора', 'Тепловая карта', 'Своя раскраска'];
   const DIRS = ['Вправо', 'Влево', 'Вниз', 'Вверх'];
   const HUE = 0x1000000; // флаг цвета: прошивка сама перебирает оттенки
   const CUSTOM = 13;
@@ -37,12 +35,7 @@
 <div class="panel kbd">
   <h3>Клавиатура<span>· ZET Blade Pro</span></h3>
 
-  <label class="field">
-    <span>Режим</span>
-    <select value={e.mode} onchange={(ev) => kbdSetMode(+ev.currentTarget.value)}>
-      {#each kbd.modes as m (m.index)}<option value={m.index}>{NAMES[m.index] ?? `Режим ${m.index}`}</option>{/each}
-    </select>
-  </label>
+  <p class="mode">Режим: <b>{KBD_NAMES[e.mode] ?? `Режим ${e.mode}`}</b></p>
 
   {#if colors.length}
     <div class="field">
@@ -79,7 +72,10 @@
 
 <style>
   .kbd { display: flex; flex-direction: column; gap: 14px; overflow: auto; }
+  h3 { margin-bottom: 0; }
   h3 span { margin-left: 6px; color: var(--dim); font-weight: 400; }
+  .mode { margin: 0; color: var(--dim); font-size: 13px; }
+  .mode b { color: var(--text); font-weight: 500; }
   .field { display: grid; gap: 6px; font-size: 13px; }
   .field > span { color: var(--dim); }
   .colors { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }

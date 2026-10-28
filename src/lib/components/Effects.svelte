@@ -4,7 +4,9 @@
   import { app } from '$lib/state/app.svelte';
   import { change } from '$lib/state/board.svelte';
   import { toggleLive } from '$lib/state/live.svelte';
+  import { kbdSetMode, KBD_NAMES, KBD_HINTS } from '$lib/state/keyboard.svelte';
   import EffectStrip from './EffectStrip.svelte';
+  import KbdStrip from './KbdStrip.svelte';
   import { MODES, HINTS, type RGB } from '$lib/leds';
 
   /** all — показать все группы сразу (страница «Эффекты») */
@@ -19,16 +21,31 @@
     ['Дополнительные', [4, 5, 8, 9, 10, 11, 12, 13, 15, 0]],
     ['Пользовательские', [16, 17]],
   ];
+  const KBD_TABS: [string, number[]][] = [
+    ['Популярные', [1, 2, 3, 11, 7, MUSIC, SCREEN]],
+    ['Дополнительные', [4, 5, 6, 8, 9, 10, 12]],
+    ['Пользовательские', [13]],
+  ];
   const WAVY = [7, 13, 8, 15];
   let tab = $state(0);
+
+  // Выбрана клавиатура — карточки её режимов (на странице «Эффекты» всегда плата)
+  const kbd = $derived(!all && app.selected === 'kbd' ? app.kbd : null);
+  const tabs = $derived(kbd ? KBD_TABS.map(([t, modes]) => [t, modes.filter((m) => m < 0 || kbd.modes.some((k) => k.index === m))] as [string, number[]]) : TABS);
+  // Цвет клавиатуры для превью; null — включена радуга (флаг 0x1000000 в цвете)
+  const kbdColor = $derived.by((): RGB | null => {
+    const c = kbd?.effect.palette[0] ?? 0xffffff;
+    return c & 0x1000000 ? null : [(c >> 16) & 255, (c >> 8) & 255, c & 255];
+  });
 
   const preview = (mode: number) => ({ ...app.edit, mode, palette: app.edit.palette.length ? app.edit.palette : DEFAULT_PALETTE });
   const DEFAULT_PALETTE: RGB[] = [[255, 0, 80], [140, 40, 255], [0, 140, 255]];
 
-  const isOn = (mode: number) => (mode < 0 ? app.live === LIVE[mode] : app.edit.mode === mode);
+  const isOn = (mode: number) => (mode < 0 ? app.live === LIVE[mode] : kbd ? kbd.effect.mode === mode : app.edit.mode === mode);
 
   function choose(mode: number) {
     if (mode < 0) return toggleLive(LIVE[mode]);
+    if (kbd) return kbdSetMode(mode);
     change({ mode, palette: app.edit.palette.length >= 2 ? app.edit.palette : DEFAULT_PALETTE });
   }
 </script>
@@ -45,8 +62,8 @@
           <div class="bars screen"></div>
           <b>Экран</b><small>Средний цвет монитора на всех зонах</small>
         {:else}
-          <EffectStrip look={preview(mode)} wave={WAVY.includes(mode) ? 1 : 0} />
-          <b>{MODES[mode]}</b><small>{HINTS[mode]}</small>
+          {#if kbd}<KbdStrip {mode} color={kbdColor} />{:else}<EffectStrip look={preview(mode)} wave={WAVY.includes(mode) ? 1 : 0} />{/if}
+          <b>{kbd ? KBD_NAMES[mode] : MODES[mode]}</b><small>{kbd ? KBD_HINTS[mode] : HINTS[mode]}</small>
         {/if}
       </button>
     {/each}
@@ -55,17 +72,17 @@
 
 <div class="panel effects">
   {#if all}
-    {#each TABS as [title, modes] (title)}
+    {#each tabs as [title, modes] (title)}
       <h3>{title}</h3>
       {@render cards(modes)}
     {/each}
   {:else}
     <div class="tabs" role="tablist">
-      {#each TABS as [title], i (title)}
+      {#each tabs as [title], i (title)}
         <button role="tab" aria-selected={tab === i} class:on={tab === i} onclick={() => (tab = i)}>{title}</button>
       {/each}
     </div>
-    {@render cards(TABS[tab][1])}
+    {@render cards(tabs[tab][1])}
   {/if}
 </div>
 
