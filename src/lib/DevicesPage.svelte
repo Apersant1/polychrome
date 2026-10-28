@@ -42,7 +42,7 @@
 </div>
 
 <style>
-  .wrap { display: grid; gap: 16px; align-content: start; overflow: auto; min-height: 0; }
+  .wrap { display: grid; grid-auto-rows: max-content; gap: 16px; align-content: start; overflow: auto; min-height: 0; }
   h3 small { margin-left: 8px; color: var(--dim); font-weight: 400; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
   .card {

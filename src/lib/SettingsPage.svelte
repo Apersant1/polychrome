@@ -62,7 +62,8 @@
 </div>
 
 <style>
-  .wrap { display: grid; gap: 16px; align-content: start; max-width: 760px; overflow: auto; min-height: 0; }
+  /* max-content: у .panel min-height: 0, и без этого строки сжимаются под окно вместо прокрутки */
+  .wrap { display: grid; grid-auto-rows: max-content; gap: 16px; align-content: start; max-width: 760px; overflow: auto; min-height: 0; }
   dl { display: grid; grid-template-columns: 160px 1fr; gap: 10px; margin: 0 0 18px; }
   dt { color: var(--dim); }
   dd { margin: 0; }
